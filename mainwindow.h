@@ -283,6 +283,8 @@ private slots:
     void saveClientRegistry();
     void updateRegistryTable();
     void applyRegistryFilter();
+    void syncRegistryTraffic(const QMap<QString, ClientInfo> &newClients,
+                             const QMap<QString, ClientInfo> &oldClients);
     void updateRealtimeDurations();
     void checkMultipleConnections();
     void deleteClientPermanently(const QString &cn);
@@ -507,7 +509,10 @@ private:
     QTableWidget *urlTable = nullptr;
     QComboBox *urlClientFilter = nullptr;
     QComboBox *urlMethodFilter = nullptr;
+    QComboBox *urlTypeFilter = nullptr;   // Все / Пользовательские / Автоматические
     QLabel *urlStatsLabel = nullptr;
+
+    static bool isAutomaticRequest(const QString &url, const QString &method);
     QList<UrlAccess> urlHistory;
 
     // Системный трей
@@ -538,7 +543,7 @@ private:
     QStringList fileLogBuffer;    // буфер записи в файл (thread-safe)
     QMutex logMutex;
     QTimer *logFlushTimer = nullptr;
-    QTimer *m_clientsUpdateDebounce = nullptr;  // дебаунс обновления таблицы клиентов
+    // дебаунс обновления таблицы клиентов удалён (используем QTimer::singleShot напрямую)
 
     // Настройки
     QSettings *settings = nullptr;

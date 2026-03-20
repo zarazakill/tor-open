@@ -62,20 +62,28 @@ DnsMonitor::DnsMonitor(QObject *parent) : QObject(parent)
         if (!m_monitoringActive) return;  // остановлен намеренно
 
         restartAttempts++;
+
+        // Экспоненциальный бэкофф: каждые 5 неудач задержка удваивается.
+        // Задержка растёт ГЛОБАЛЬНО и сбрасывается только stabilityTimer
+        // (когда tcpdump работает стабильно >= TCPDUMP_STABILITY_CHECK мс).
         if (restartAttempts <= 5) {
-            emit logMessage(QString("Перезапуск tcpdump (попытка %1/5)...").arg(restartAttempts), "warning");
+            emit logMessage(QString("Перезапуск tcpdump (попытка %1/5, задержка %2мс)...")
+                            .arg(restartAttempts).arg(tcpdumpRestartDelay), "warning");
             startMonitoring("");
         } else {
-            // 5 неудач подряд — увеличиваем задержку, но не сбрасываем счётчик
+            // Серия из 5 попыток провалилась — увеличиваем задержку для следующей серии
+            restartAttempts = 0;
             tcpdumpRestartDelay = qMin(tcpdumpRestartDelay * 2, (int)MAX_RESTART_DELAY);
+
             if (tcpdumpRestartDelay >= (int)MAX_RESTART_DELAY) {
-                emit logMessage(QString("tcpdump: достигнут максимальный интервал (%1 сек). Ожидаем.")
+                emit logMessage(QString("⛔ tcpdump: все попытки исчерпаны. "
+                    "Ожидание %1 сек перед следующей серией. "
+                    "Проверьте: tcpdump установлен? права cap_net_raw? интерфейс tun0 активен?")
                     .arg(MAX_RESTART_DELAY / 1000), "error");
             } else {
-                emit logMessage(QString("tcpdump: повтор через %1 сек...")
+                emit logMessage(QString("tcpdump: следующая серия через %1 сек...")
                     .arg(tcpdumpRestartDelay / 1000), "warning");
             }
-            restartAttempts = 0;  // сбросить счётчик попыток для следующей серии
             restartTimer->start(tcpdumpRestartDelay);
         }
     });
@@ -87,7 +95,9 @@ DnsMonitor::DnsMonitor(QObject *parent) : QObject(parent)
         if (tcpdumpHasCaptured && tcpdumpProcess && tcpdumpProcess->state() == QProcess::Running) {
             tcpdumpRestartDelay = MIN_RESTART_DELAY;
             restartAttempts = 0;
-            emit logMessage("tcpdump стабилен, задержка сброшена", "info");
+            m_tcpdumpFastFailCount = 0;
+            m_tcpdumpSimpleMode = false;
+            emit logMessage("✅ tcpdump стабилен, все счётчики сброшены", "info");
         }
     });
 
@@ -303,13 +313,13 @@ void DnsMonitor::updateClientStats(const QString &clientName, const UrlAccess &a
     stats.totalRequests++;
     stats.lastRequest = access.timestamp;
 
-    // По методам
+    // По методам (HTTPS проверяем до HTTP — "HTTPS (IP)".contains("HTTP") тоже true)
     if (access.method.contains("DNS")) {
         stats.dnsRequests++;
-    } else if (access.method.contains("HTTP")) {
-        stats.httpRequests++;
     } else if (access.method.contains("HTTPS")) {
         stats.httpsRequests++;
+    } else if (access.method.contains("HTTP")) {
+        stats.httpRequests++;
     }
 
     // По категориям
@@ -575,7 +585,7 @@ void DnsMonitor::onControlData()
 
 void DnsMonitor::parseAddrMap(const QString &line)
 {
-    QMutexLocker locker(&cacheMutex);
+    RecursiveMutexLocker locker(&cacheMutex);
     static QRegularExpression re(R"(ADDRMAP\s+(\S+)\s+(\S+)\s+)");
     auto m = re.match(line);
     if (!m.hasMatch()) return;
@@ -696,6 +706,13 @@ void DnsMonitor::startMonitoring(const QString &vpnNetwork)
     Q_UNUSED(vpnNetwork)
     m_monitoringActive = true;  // разрешаем авторестарт
 
+    // Если tcpdump уже запущен и работает — не перезапускаем.
+    // Это предотвращает гонку когда MainWindow и restartTimer вызывают
+    // startMonitoring одновременно и убивают только что запущенный процесс.
+    if (tcpdumpProcess && tcpdumpProcess->state() == QProcess::Running) {
+        return;  // уже работает — ничего не делаем
+    }
+
     QString tunIface = detectTunInterface();
 
     if (!tunIface.isEmpty()) {
@@ -709,6 +726,7 @@ void DnsMonitor::startMonitoring(const QString &vpnNetwork)
         }
 
         tcpdumpProcess = new QProcess(this);
+        tcpdumpProcess->setWorkingDirectory("/");
         tcpdumpProcess->setProcessChannelMode(QProcess::MergedChannels);
 
         connect(tcpdumpProcess, &QProcess::readyReadStandardOutput,
@@ -718,26 +736,59 @@ void DnsMonitor::startMonitoring(const QString &vpnNetwork)
         connect(tcpdumpProcess, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
                 this, &DnsMonitor::onTcpdumpFinished);
 
-        QStringList args = {
-            "-i", tunIface,
-            "-l",
-            "-n",
-            "-s", "256",
-            "udp port 53 or (tcp port 443 and (tcp[((tcp[12]&0xf0)>>2)]=0x16))"
-        };
+        // Базовый фильтр — только трафик клиентов VPN
+        // Исключаем трафик между VPN-сервером и Tor (10.8.0.1) чтобы
+        // не захватывать служебные соединения
+        QString bpfFilter = QString(
+            "(udp port 53 or tcp port 80 or tcp port 443)"
+            " and not host 10.8.0.1"
+        );
 
-        emit logMessage(QString("Запуск tcpdump на интерфейсе: %1").arg(tunIface), "info");
+        QStringList args;
+        args << "-i" << tunIface
+             << "-l"          // line-buffered: вывод без буферизации
+             << "-n"          // без reverse DNS внутри tcpdump
+             << "-tt";        // unix timestamp вместо читаемого формата
 
+        if (!m_tcpdumpSimpleMode) {
+            // Полный режим: захватываем payload для HTTP Host и TLS SNI
+            args << "-s" << "512"   // достаточно для DNS + HTTP Host + TLS ClientHello
+                 << "-A";           // ASCII для HTTP Host header
+        } else {
+            // Упрощённый режим: только заголовки, без payload
+            // Используется после 3 быстрых сбоев в полном режиме
+            emit logMessage("ℹ️ tcpdump: упрощённый режим (только заголовки)", "info");
+            args << "-s" << "96";   // только IP+TCP заголовки
+        }
+
+        args << bpfFilter;
+
+        emit logMessage(QString("Запуск tcpdump на интерфейсе: %1%2")
+                        .arg(tunIface)
+                        .arg(m_tcpdumpSimpleMode ? " [упрощённый]" : ""), "info");
+
+        m_tcpdumpStartTime = QDateTime::currentMSecsSinceEpoch();
         tcpdumpProcess->start("tcpdump", args);
 
-        if (tcpdumpProcess->waitForStarted(2000)) {
+        if (tcpdumpProcess->waitForStarted(3000)) {
             emit logMessage("📡 DNS/HTTPS сниффер запущен", "info");
-            // restartAttempts сбрасывается только stabilityTimer после
-            // подтверждения стабильной работы (TCPDUMP_STABILITY_CHECK мс)
             stabilityTimer->start(TCPDUMP_STABILITY_CHECK);
         } else {
             QString error = tcpdumpProcess->errorString();
-            emit logMessage("⚠️ tcpdump не удалось запустить: " + error, "warning");
+            emit logMessage("⚠️ tcpdump не удалось запустить: " + error + 
+                            " — убедитесь что tcpdump установлен и имеет права cap_net_raw", "warning");
+            // Проверяем существование бинарника
+            QProcess which;
+            which.start("which", {"tcpdump"});
+            which.waitForFinished(1000);
+            if (which.exitCode() != 0) {
+                emit logMessage("❌ tcpdump не найден! Установите: apt install tcpdump", "error");
+            } else {
+                QString tcpdumpBin = QString::fromUtf8(which.readAllStandardOutput()).trimmed();
+                emit logMessage("tcpdump найден: " + tcpdumpBin + 
+                                " — проверьте права: setcap cap_net_raw,cap_net_admin=eip " + tcpdumpBin,
+                                "warning");
+            }
             restartTimer->start(tcpdumpRestartDelay);
         }
     } else {
@@ -798,8 +849,11 @@ void DnsMonitor::stopMonitoring()
     }
 
     seenConntrackKeys.clear();
-    ipToDomainCache.clear();
-    seenUrlTimestamps.clear();
+    {
+        RecursiveMutexLocker locker(&cacheMutex);
+        ipToDomainCache.clear();
+        seenUrlTimestamps.clear();
+    }
 
     for (auto *timer : pendingReverseLookups) {
         timer->stop();
@@ -836,29 +890,24 @@ void DnsMonitor::onTcpdumpError()
 
 void DnsMonitor::onTcpdumpOutput()
 {
-    static bool isProcessing = false;
-    if (isProcessing) return;
-    isProcessing = true;
+    // Обрабатываем строки прямо в слоте — без QtConcurrent.
+    // tcpdump без -XX даёт ~100 байт/строку; парсинг регулярками быстр.
+    // Ограничение партии защищает от временных зависаний UI при burst-трафике.
+    const int MAX_LINES_PER_BATCH = 200;
+    int processed = 0;
 
-    // Ограничение на количество строк за один вызов
-    int processedLines = 0;
-    const int MAX_LINES_PER_BATCH = 100;
-
-    while (tcpdumpProcess && tcpdumpProcess->canReadLine() && processedLines < MAX_LINES_PER_BATCH) {
+    while (tcpdumpProcess && tcpdumpProcess->canReadLine() && processed < MAX_LINES_PER_BATCH) {
         QString line = QString::fromUtf8(tcpdumpProcess->readLine()).trimmed();
         if (!line.isEmpty()) {
-            // Обрабатываем строку асинхронно через QtConcurrent
-            auto future = QtConcurrent::run([this, line]() {
-                parseTcpdumpLine(line);
-            });
-            Q_UNUSED(future);
-            processedLines++;
+            // Отмечаем что tcpdump жив и получает пакеты
+            tcpdumpHasCaptured = true;
+            lastPacketTime = QDateTime::currentMSecsSinceEpoch();
+            parseTcpdumpLine(line);
         }
+        processed++;
     }
 
-    isProcessing = false;
-
-    // Если остались строки — обрабатываем в следующем цикле событий
+    // Если в буфере ещё есть данные — отдаём управление event loop и продолжим
     if (tcpdumpProcess && tcpdumpProcess->bytesAvailable() > 0) {
         QMetaObject::invokeMethod(this, &DnsMonitor::onTcpdumpOutput, Qt::QueuedConnection);
     }
@@ -868,32 +917,64 @@ void DnsMonitor::onTcpdumpFinished()
 {
     if (!tcpdumpProcess) return;
 
-    qint64 now = QDateTime::currentMSecsSinceEpoch();
+    int exitCode = tcpdumpProcess->exitCode();
+    QProcess::ExitStatus exitStatus = tcpdumpProcess->exitStatus();
+    qint64 uptime = QDateTime::currentMSecsSinceEpoch() - m_tcpdumpStartTime;
 
-    if (tcpdumpProcess->error() == QProcess::Crashed) {
-        emit logMessage("tcpdump аварийно завершился", "warning");
+    // Читаем весь накопленный вывод (stderr смерджен в stdout)
+    QString output = QString::fromUtf8(tcpdumpProcess->readAllStandardOutput()).trimmed();
+
+    // Всегда логируем детали завершения для диагностики
+    if (exitStatus == QProcess::CrashExit) {
+        emit logMessage(QString("❌ tcpdump упал (сигнал), uptime=%1мс").arg(uptime), "warning");
+    } else if (exitCode != 0) {
+        emit logMessage(QString("❌ tcpdump завершился с ошибкой (код %1), uptime=%2мс")
+                        .arg(exitCode).arg(uptime), "warning");
     }
 
-    QString output = QString::fromUtf8(tcpdumpProcess->readAllStandardOutput()).trimmed();
-    if (output.contains("packets captured")) {
-        emit logMessage(output, "info");
+    // Логируем вывод tcpdump если есть — там причина ошибки
+    if (!output.isEmpty()) {
+        // Разбиваем на строки, логируем каждую
+        for (const QString &line : output.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
+            QString t = line.trimmed();
+            if (!t.isEmpty())
+                emit logMessage(QString("tcpdump: %1").arg(t), "warning");
+        }
     }
 
     if (!m_monitoringActive) {
-        // остановлен намеренно — не перезапускаем
-        return;
+        return; // остановлен намеренно — не перезапускаем
     }
 
-    if (!tcpdumpHasCaptured && (now - lastPacketTime) < 5000) {
-        tcpdumpRestartDelay = qMin(tcpdumpRestartDelay * 2, MAX_RESTART_DELAY);
-        emit logMessage(QString("Нет пакетов, увеличиваем задержку до %1 мс").arg(tcpdumpRestartDelay), "info");
-    } else if (tcpdumpHasCaptured) {
+    // Если tcpdump жил меньше 2 секунд — это системная проблема (права, нет интерфейса, etc.)
+    // Пробуем диагностику и альтернативные параметры запуска
+    if (uptime < 2000 && exitCode != 0) {
+        m_tcpdumpFastFailCount++;
+        emit logMessage(QString("⚠️ tcpdump быстро завершился (%1 мс), быстрых сбоев: %2")
+                        .arg(uptime).arg(m_tcpdumpFastFailCount), "warning");
+
+        // После 3 быстрых сбоев подряд — переключаемся на упрощённый режим
+        if (m_tcpdumpFastFailCount >= 3) {
+            emit logMessage("🔄 Переключение на упрощённый режим tcpdump (без -A и -s)", "info");
+            m_tcpdumpSimpleMode = true;
+            m_tcpdumpFastFailCount = 0;
+        }
+    } else if (uptime >= 2000) {
+        // Работал нормально — сбрасываем счётчик быстрых сбоев
+        m_tcpdumpFastFailCount = 0;
+        m_tcpdumpSimpleMode = false;
+    }
+
+    if (tcpdumpHasCaptured) {
         tcpdumpRestartDelay = MIN_RESTART_DELAY;
+    } else {
+        tcpdumpRestartDelay = qMin(tcpdumpRestartDelay * 2, (int)MAX_RESTART_DELAY);
     }
 
     tcpdumpHasCaptured = false;
 
-    emit logMessage(QString("tcpdump завершился, перезапуск через %1 мс...").arg(tcpdumpRestartDelay), "warning");
+    emit logMessage(QString("tcpdump завершился, перезапуск через %1 мс...")
+                    .arg(tcpdumpRestartDelay), "warning");
     restartTimer->start(tcpdumpRestartDelay);
 }
 
@@ -932,6 +1013,17 @@ QString DnsMonitor::extractDomainFromReverse(const QString &ptr)
 
 void DnsMonitor::reverseLookup(const QString &ip, const QString &srcIP, const QString &method)
 {
+    // Не делаем PTR-запросы для VPN-адресов (10.8.0.x) и приватных сетей —
+    // они уходят через Tor DNS и порождают "ill-formed reverse lookup"
+    if (ip.startsWith("10.") || ip.startsWith("192.168.") ||
+        ip.startsWith("172.16.") || ip.startsWith("127.") ||
+        ip.startsWith("::1") || ip.isEmpty()) {
+        return;
+    }
+
+    // Не дублируем запросы: если уже ожидаем ответ для этого IP — выходим
+    if (pendingReverseLookups.contains(ip)) return;
+
     QTimer *timer = new QTimer(this);
     timer->setSingleShot(true);
     timer->start(10000); // Таймаут 10 сек
@@ -1005,56 +1097,43 @@ void DnsMonitor::parseTcpdumpLine(const QString &line)
         return;
     }
 
-    // 3. TLS SNI (Server Name Indication) - для HTTPS доменов
-    if (line.contains("0x0000:") || line.contains("0x0010:") ||
-        line.contains("0x0020:") || line.contains("0x0030:")) {
-
-        // Новая строка с IP - начало нового пакета
-        if (line.contains("IP") && line.contains(">")) {
-            static QRegularExpression ipRe(R"(IP\s+(\d+\.\d+\.\d+\.\d+)\.\d+\s+>)");
-            auto ipMatch = ipRe.match(line);
-            if (ipMatch.hasMatch()) {
-                m_currentSrcIP = ipMatch.captured(1);
-                m_currentPacketTime = QDateTime::currentMSecsSinceEpoch();
-            }
-            m_currentPacket.clear();
-        }
-
-        // Парсим hex дамп
-        QStringList parts = line.split(':');
-        if (parts.size() > 1) {
-            QString hexPart = parts[1].trimmed();
-            QStringList hexBytes = hexPart.split(' ', Qt::SkipEmptyParts);
-
-            for (const QString &hex : hexBytes) {
-                if (hex.length() == 4) {
-                    m_currentPacket.append(hex.mid(0,2).toInt(nullptr, 16));
-                    m_currentPacket.append(hex.mid(2,2).toInt(nullptr, 16));
-                } else if (hex.length() == 2) {
-                    m_currentPacket.append(hex.toInt(nullptr, 16));
-                }
-            }
-        }
-
-        // Если накопили достаточно данных и есть IP, парсим SNI
-        if (m_currentPacket.size() > 50 && !m_currentSrcIP.isEmpty()) {
-            parseTlsSni(m_currentPacket, m_currentSrcIP);
-        }
-        }
+    // 3. TLS SNI — получается через ADDRMAP из Tor ControlPort (надёжнее hex-парсинга)
+    // Hex-парсинг удалён: требовал флаг -XX у tcpdump, который переполнял pipe и
+    // вызывал постоянные перезапуски. Домены для HTTPS резолвятся через Tor ADDRMAP.
 
         // 4. HTTP запросы (порт 80)
-        static QRegularExpression httpRe(
-            R"(IP\s+(\d+\.\d+\.\d+\.\d+)\.\d+\s+>\s+(\d+\.\d+\.\d+\.\d+)\.80:\s+Flags\s+\[P\.\].*Host:\s+([^\r\n]+))"
+        // tcpdump -A выводит пакет многострочно: сначала IP/Flags, потом payload.
+        // Поэтому отслеживаем srcIP по TCP SYN/PSH строкам, затем ловим "Host:" на следующих.
+        static QRegularExpression httpPktRe(
+            R"(IP\s+(\d+\.\d+\.\d+\.\d+)\.\d+\s+>\s+(\d+\.\d+\.\d+\.\d+)\.80:\s+Flags\s+\[)"
         );
-    auto mHttp = httpRe.match(line);
-    if (mHttp.hasMatch()) {
-        QString srcIP = mHttp.captured(1);
-        QString host = mHttp.captured(3).trimmed();
-        if (!host.isEmpty() && !isIgnoredDomain(host)) {
-            emitUrlAccess(srcIP, host, "HTTP");
+        auto mHttpPkt = httpPktRe.match(line);
+        if (mHttpPkt.hasMatch()) {
+            m_lastTcpSrcIP = mHttpPkt.captured(1);
+            m_lastTcpDstIP = mHttpPkt.captured(2);
+            m_inHttpPayload = line.contains("[P.");
+            return;
         }
-        return;
-    }
+        // Host: header строка (приходит в payload после IP-строки)
+        if (m_inHttpPayload && !m_lastTcpSrcIP.isEmpty()) {
+            static QRegularExpression hostRe(R"(^Host:\s*([^
+\s]+))");
+            auto mHost = hostRe.match(line);
+            if (mHost.hasMatch()) {
+                QString host = mHost.captured(1).trimmed();
+                if (!host.isEmpty() && !isIgnoredDomain(host)) {
+                    emitUrlAccess(m_lastTcpSrcIP, host, "HTTP");
+                }
+                m_inHttpPayload = false;
+                m_lastTcpSrcIP.clear();
+                return;
+            }
+            // Если встретили пустую строку или конец заголовков — сбрасываем
+            if (line.isEmpty() || line.startsWith("IP ")) {
+                m_inHttpPayload = false;
+            }
+            return;
+        }
 
     // 5. HTTPS соединения (SYN to 443)
     static QRegularExpression tcpConnRe(
@@ -1072,13 +1151,21 @@ void DnsMonitor::parseTcpdumpLine(const QString &line)
             }
 
         QString displayUrl = dstIP;
-        if (ipToDomainCache.contains(dstIP)) {
-            displayUrl = ipToDomainCache[dstIP].domain;
+        {
+            RecursiveMutexLocker locker(&cacheMutex);
+            if (ipToDomainCache.contains(dstIP)) {
+                displayUrl = ipToDomainCache[dstIP].domain;
+            }
+        }
+        if (displayUrl != dstIP) {
             emitUrlAccess(srcIP, displayUrl, "HTTPS");
         } else {
             // Если домена нет в кэше, показываем IP и запускаем reverse lookup
             emitUrlAccess(srcIP, displayUrl, "HTTPS (IP)");
-            reverseLookup(dstIP, srcIP, "HTTPS");
+            // reverseLookup создаёт QTimer и QHostInfo — только из главного потока
+            QMetaObject::invokeMethod(this, [this, dstIP, srcIP]() {
+                reverseLookup(dstIP, srcIP, "HTTPS");
+            }, Qt::QueuedConnection);
         }
         return;
     }
@@ -1190,7 +1277,7 @@ void DnsMonitor::parseTlsSni(const QByteArray &packet, const QString &srcIP)
 
                     if (!domain.isEmpty() && !isIgnoredDomain(domain)) {
                         {
-                            QMutexLocker locker(&cacheMutex);
+                            RecursiveMutexLocker locker(&cacheMutex);
                             CacheEntry entry;
                             entry.domain    = domain;
                             entry.timestamp = QDateTime::currentDateTime();
@@ -1254,8 +1341,13 @@ void DnsMonitor::pollConntrack()
             else method = "HTTP";
 
             QString displayUrl = dst;
-            if (ipToDomainCache.contains(dst)) {
-                displayUrl = ipToDomainCache[dst].domain;
+            {
+                RecursiveMutexLocker locker(&cacheMutex);
+                if (ipToDomainCache.contains(dst)) {
+                    displayUrl = ipToDomainCache[dst].domain;
+                }
+            }
+            if (displayUrl != dst) {
                 emitUrlAccess(src, displayUrl, method);
             } else {
                 emitUrlAccess(src, displayUrl, method + " (IP)");
@@ -1277,46 +1369,52 @@ bool DnsMonitor::isVpnClient(const QString &ip) const
 
 void DnsMonitor::emitUrlAccess(const QString &srcIP, const QString &url, const QString &method)
 {
-    QMutexLocker cacheLocker(&cacheMutex);
-    QMutexLocker mapLocker(&clientMapMutex);
-    QString clientName = clientIPMap.value(srcIP, "unknown");
-    QString clientIP = srcIP;
-
     static QRegularExpression ipRe(R"(^\d+\.\d+\.\d+\.\d+$)");
-    QString displayUrl = url;
     QDateTime now = QDateTime::currentDateTime();
+    QString displayUrl = url;
+    QString clientName;
 
-    if (ipRe.match(url).hasMatch()) {
-        if (ipToDomainCache.contains(url)) {
+    // --- критическая секция: читаем/пишем кэши ---
+    {
+        RecursiveMutexLocker cacheLocker(&cacheMutex);
+        QMutexLocker mapLocker(&clientMapMutex);
+
+        clientName = clientIPMap.value(srcIP, "unknown");
+
+        // Подставляем домен по IP если известен
+        if (ipRe.match(url).hasMatch() && ipToDomainCache.contains(url)) {
             displayUrl = ipToDomainCache[url].domain;
         }
-    }
 
-    QString dedupeKey = srcIP + "|" + displayUrl + "|" + method;
-    if (seenUrlTimestamps.contains(dedupeKey)) {
-        if (seenUrlTimestamps[dedupeKey].secsTo(now) < DEDUP_SECONDS) {
-            return;
+        // Дедупликация
+        QString dedupeKey = srcIP + "|" + displayUrl + "|" + method;
+        if (seenUrlTimestamps.contains(dedupeKey)) {
+            if (seenUrlTimestamps[dedupeKey].secsTo(now) < DEDUP_SECONDS) {
+                return;
+            }
         }
-    }
-    seenUrlTimestamps[dedupeKey] = now;
+        seenUrlTimestamps[dedupeKey] = now;
 
-    if (ipRe.match(url).hasMatch() && displayUrl != url) {
-        CacheEntry entry;
-        entry.domain = displayUrl;
-        entry.timestamp = now;
-        entry.category = categorizeDomain(displayUrl);
-        ipToDomainCache[url] = entry;
-    }
+        // Обратное кэширование IP->домен
+        if (ipRe.match(url).hasMatch() && displayUrl != url) {
+            CacheEntry entry;
+            entry.domain    = displayUrl;
+            entry.timestamp = now;
+            entry.category  = categorizeDomain(displayUrl);
+            ipToDomainCache[url] = entry;
+        }
 
-    cleanupOldEntries();
+        cleanupOldEntries(); // cacheMutex рекурсивный — не дедлок
+    }
+    // --- блокировки сняты: emit и обновление статистики без холдинга кэш-мьютексов ---
 
     UrlAccess access;
     access.clientName = clientName;
-    access.clientIP = clientIP;
-    access.url = displayUrl;
-    access.timestamp = now;
-    access.method = method;
-    access.category = categorizeDomain(displayUrl);
+    access.clientIP   = srcIP;
+    access.url        = displayUrl;
+    access.timestamp  = now;
+    access.method     = method;
+    access.category   = categorizeDomain(displayUrl);
 
     emit urlAccessed(access);
     updateClientStats(clientName, access);
@@ -1324,7 +1422,7 @@ void DnsMonitor::emitUrlAccess(const QString &srcIP, const QString &url, const Q
 
 void DnsMonitor::cleanupOldEntries()
 {
-    QMutexLocker locker(&cacheMutex);
+    RecursiveMutexLocker locker(&cacheMutex);
     QDateTime now = QDateTime::currentDateTime();
     QDateTime cutoff = now.addSecs(-300); // 5 минут назад
 
@@ -1361,6 +1459,7 @@ void DnsMonitor::cleanupOldEntries()
 
 void DnsMonitor::setClientMap(const QMap<QString, QString> &ipToClient)
 {
+    QMutexLocker locker(&clientMapMutex);
     clientIPMap = ipToClient;
 }
 

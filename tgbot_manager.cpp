@@ -16,6 +16,7 @@
  */
 
 #include "tgbot_manager.h"
+#include <QNetworkProxy>
 #include "mainwindow.h"
 
 #include <QApplication>
@@ -49,6 +50,18 @@ TelegramBotManager::TelegramBotManager(QSettings *settings, QObject *parent)
 , settings(settings)
 {
     nam = new QNetworkAccessManager(this);
+
+    // Маршрутизируем весь трафик бота через Tor SOCKS5.
+    // Без этого трафик root-процесса обходит transparent proxy iptables
+    // и идёт напрямую — соединение с api.telegram.org сбрасывается.
+    {
+        int socksPort = settings ? settings->value("tor/socksPort", 9050).toInt() : 9050;
+        QNetworkProxy torProxy;
+        torProxy.setType(QNetworkProxy::Socks5Proxy);
+        torProxy.setHostName("127.0.0.1");
+        torProxy.setPort(static_cast<quint16>(socksPort));
+        nam->setProxy(torProxy);
+    }
 
     // Отключаем HTTP/2 глобально — он вызывает "device not open" и обрывы
     // соединения с api.telegram.org. HTTP/1.1 стабильнее для long polling.
@@ -2537,8 +2550,22 @@ void TelegramBotManager::onBtnTestToken()
     QNetworkRequest req = createTelegramRequest(TG_API_BASE + token + "/getMe", 10000);
     auto *reply = nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply]{
+        QNetworkReply::NetworkError netErr = reply->error();
+        QString netErrStr = reply->errorString();
         QByteArray data = reply->readAll();
         reply->deleteLater();
+
+        // Сначала проверяем сетевую ошибку (прокси, таймаут, SSL и т.д.)
+        if (netErr != QNetworkReply::NoError) {
+            QString msg = QString("⚠️ Ошибка сети при проверке токена: %1").arg(netErrStr);
+            addLog(msg, "error");
+            QMessageBox::critical(tabWidget, "Ошибка сети",
+                QString("Не удалось связаться с Telegram API.\n\n"
+                        "Ошибка: %1\n\n"
+                        "Убедитесь, что Tor запущен и SOCKS-порт доступен.").arg(netErrStr));
+            return;
+        }
+
         QJsonDocument doc = QJsonDocument::fromJson(data);
         QJsonObject root = doc.object();
         if (root["ok"].toBool()) {
@@ -2552,6 +2579,7 @@ void TelegramBotManager::onBtnTestToken()
                                      QString("Токен действителен!\nБот: %1 (@%2)").arg(name, username));
         } else {
             QString err = root["description"].toString();
+            if (err.isEmpty()) err = QString::fromUtf8(data.left(200));
             addLog("❌ Токен недействителен: " + err, "error");
             QMessageBox::critical(tabWidget, "Ошибка",
                                   "Токен недействителен:\n" + err);

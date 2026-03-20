@@ -32,7 +32,9 @@
 #include <QJsonArray>
 #include <csignal>
 #include <QGuiApplication>
-#include <QStringConverter>
+#if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+#include <QTextCodec>
+#endif
 #include <QRegularExpressionMatch>
 #include <QtConcurrent/QtConcurrent>
 #include <QElapsedTimer>
@@ -482,7 +484,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     // Инициализация компонентов
     settings = new QSettings("TorManager", "TorVPN", this);
     torProcess = new QProcess(this);
+    torProcess->setWorkingDirectory("/");
     openVPNServerProcess = new QProcess(this);
+    openVPNServerProcess->setWorkingDirectory("/");
     openVPNServerProcess->setProcessChannelMode(QProcess::MergedChannels);
     controlSocket = new QTcpSocket(this);
     ipCheckManager = new QNetworkAccessManager(this);
@@ -497,7 +501,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     clientStats = new ClientStats(this);
 
     // Инициализация DNS монитора
-    dnsMonitor = new DnsMonitor(this);
+    // DnsMonitor в отдельном потоке — его startMonitoring() содержит
+    // блокирующие вызовы (waitForFinished) которые иначе заморозят UI
+    dnsMonitor = new DnsMonitor(nullptr);
+    QThread *dnsThread = new QThread(this);
+    dnsMonitor->moveToThread(dnsThread);
+    connect(dnsThread, &QThread::finished, dnsMonitor, &QObject::deleteLater);
+    connect(dnsThread, &QThread::finished, dnsThread, &QObject::deleteLater);
+    dnsThread->start();
     connect(dnsMonitor, &DnsMonitor::urlAccessed, this, &MainWindow::addUrlAccess);
     connect(dnsMonitor, &DnsMonitor::logMessage, this, &MainWindow::addLogMessage);
 
@@ -633,11 +644,11 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
         // Первая попытка через 3 сек (tun0 обычно поднимается за 1-2 сек)
         QTimer::singleShot(3000, this, [this, network]() {
             if (!dnsMonitor) return;
-            dnsMonitor->startMonitoring(network);
+            QMetaObject::invokeMethod(dnsMonitor, [this, network](){ dnsMonitor->startMonitoring(network); }, Qt::QueuedConnection);
             // Вторая попытка через ещё 4 сек — на случай медленного старта
             QTimer::singleShot(4000, this, [this, network]() {
                 if (!dnsMonitor) return;
-                dnsMonitor->startMonitoring(network);
+                QMetaObject::invokeMethod(dnsMonitor, [this, network](){ dnsMonitor->startMonitoring(network); }, Qt::QueuedConnection);
             });
         });
     });
@@ -690,8 +701,9 @@ MainWindow::~MainWindow()
 
     // Останавливаем мониторинг URL
     if (dnsMonitor) {
-        dnsMonitor->stopMonitoring();
-        delete dnsMonitor;
+        QMetaObject::invokeMethod(dnsMonitor, &DnsMonitor::stopMonitoring, Qt::BlockingQueuedConnection);
+        dnsMonitor->thread()->quit();
+        dnsMonitor->thread()->wait(3000);
         dnsMonitor = nullptr;
     }
 
@@ -1003,6 +1015,7 @@ void MainWindow::createTorTab()
     QVBoxLayout *tlVl = new QVBoxLayout(torLogGrp);
     txtTorLog = new QTextEdit();
     txtTorLog->setReadOnly(true);
+    txtTorLog->document()->setMaximumBlockCount(2000);
     txtTorLog->setFont(QFont("Monospace", 8));
     tlVl->addWidget(txtTorLog);
     logsRow->addWidget(torLogGrp, 1);
@@ -1011,6 +1024,7 @@ void MainWindow::createTorTab()
     QVBoxLayout *vlVl = new QVBoxLayout(vpnLogGrp);
     txtServerLog = new QTextEdit();
     txtServerLog->setReadOnly(true);
+    txtServerLog->document()->setMaximumBlockCount(2000);
     txtServerLog->setFont(QFont("Monospace", 8));
     vlVl->addWidget(txtServerLog);
     logsRow->addWidget(vpnLogGrp, 1);
@@ -1158,6 +1172,7 @@ void MainWindow::createClientsTab()
     logLayout->setContentsMargins(4, 4, 4, 4);
 
     txtClientsLog = new QTextEdit();
+    txtClientsLog->document()->setMaximumBlockCount(2000);
     txtClientsLog->setReadOnly(true);
     txtClientsLog->setMaximumHeight(130);
     txtClientsLog->setFont(QFont("Monospace", 9));
@@ -1425,15 +1440,8 @@ void MainWindow::createClientsTab()
     connect(btnClearClientsLog, &QPushButton::clicked, this, &MainWindow::clearClientsLog);
     connect(btnAddNamedClient, &QPushButton::clicked, this, &MainWindow::generateNamedClientConfig);
 
-    // Инициализация DNS монитора
-    dnsMonitor = new DnsMonitor(this);
-    connect(dnsMonitor, &DnsMonitor::urlAccessed,
-            this, &MainWindow::addUrlAccess);
-    connect(dnsMonitor, &DnsMonitor::logMessage,
-            this, &MainWindow::addLogMessage);
-
-    connect(this, &MainWindow::clientsUpdated, [this]() {
-
+    // Подписка на обновление карты клиентов для DNS монитора
+    connect(this, &MainWindow::clientsUpdated, this, [this]() {
         if (dnsMonitor) {
             QMap<QString, QString> ipMap;
             for (auto it = clientsCache.begin(); it != clientsCache.end(); ++it) {
@@ -1443,6 +1451,62 @@ void MainWindow::createClientsTab()
         }
     });
 
+}
+
+// ── Классификация автоматических запросов ───────────────────────────────────
+// Возвращает true если запрос сгенерирован системой/приложением, а не пользователем.
+bool MainWindow::isAutomaticRequest(const QString &url, const QString &method)
+{
+    // DNS-over-HTTPS инфраструктура — всегда автоматическая
+    if (method == "DNS-over-HTTPS") return true;
+
+    // Голые IP-адреса без обратного разрешения — авто (conntrack, системные соединения)
+    static QRegularExpression ipOnlyRe(R"(^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$)");
+    if (method == "HTTPS (IP)" && ipOnlyRe.match(url).hasMatch()) return true;
+
+    // Обратные PTR-записи инфраструктурных серверов
+    if (method == "HTTPS (PTR)" && (
+        url.contains("opendns.com") ||
+        url.contains("reverse.open-telekom") ||
+        url.contains("compute.hwclouds-dns") ||
+        url.contains("reverse.softlayer"))) return true;
+
+    // DoH резолверы
+    static const QStringList dohDomains = {
+        "doh.opendns.com", "dns.google", "cloudflare-dns.com",
+        "dns.quad9.net", "doh.cleanbrowsing.org", "doh.dns.sb"
+    };
+    for (const QString &d : dohDomains)
+        if (url == d || url.endsWith("." + d)) return true;
+
+    // Системная телеметрия, аналитика, фоновые сервисы
+    static const QStringList autoPatterns = {
+        // Yandex фоновые
+        "appmetrica.yandex", "report.appmetrica", "rosenberg.appmetrica",
+        "api.browser.yandex", "lbs.yandex", "lbs-slb.mobile.yandex",
+        "egress.yandex", "api.lbs.yandex", "mc.yandex",
+        "sba.search.yandex", "mail-yandex-ru-production",
+        // Huawei/Honor фоновые
+        "dbankcloud.ru", "dbankcloud.com", "map.dbankcloud",
+        "weather-drru.music.dbankcloud",
+        // Brave Browser фоновые
+        "quorum.wdp.brave.com", "collector.wdp.brave.com",
+        // Общие телеметрия/аналитика
+        "ocsp.", "crl.", "telemetry.", "metrics.", "analytics.",
+        "update.", "updates.", "push.", "stat.", "stats.",
+        "safebrowsing.", "safe-browsing",
+        "crashlytics.com", "firebase.googleapis.com",
+        "clients1.google.com", "clients2.google.com",
+        "connectivitycheck.gstatic.com", "captive.apple.com",
+        "time.windows.com", "time.apple.com",
+        "windowsupdate.com", "download.windowsupdate.com",
+        "microsoft.com/pkiops", "ctldl.windowsupdate"
+    };
+    QString lurl = url.toLower();
+    for (const QString &pat : autoPatterns)
+        if (lurl.contains(pat)) return true;
+
+    return false;
 }
 
 void MainWindow::createUrlHistoryTab()
@@ -1467,6 +1531,14 @@ void MainWindow::createUrlHistoryTab()
     urlMethodFilter->setMinimumWidth(100);
     filterLayout->addWidget(urlMethodFilter);
 
+    filterLayout->addWidget(new QLabel("Тип:"));
+    urlTypeFilter = new QComboBox();
+    urlTypeFilter->addItems({"Все", "👤 Пользовательские", "🤖 Автоматические"});
+    urlTypeFilter->setMinimumWidth(160);
+    urlTypeFilter->setToolTip("Пользовательские — сайты открытые вручную.\n"
+                              "Автоматические — телеметрия, DoH, фоновые сервисы.");
+    filterLayout->addWidget(urlTypeFilter);
+
     filterLayout->addStretch();
 
     QPushButton *btnClearUrls = new QPushButton("🗑 Очистить историю");
@@ -1486,8 +1558,8 @@ void MainWindow::createUrlHistoryTab()
 
     // ── Таблица URL ──────────────────────────────────────────────────────
     urlTable = new QTableWidget();
-    urlTable->setColumnCount(5);
-    urlTable->setHorizontalHeaderLabels({"Время", "Клиент", "VPN IP", "Метод", "URL/Домен"});
+    urlTable->setColumnCount(6);
+    urlTable->setHorizontalHeaderLabels({"Время", "Клиент", "VPN IP", "Метод", "Тип", "URL/Домен"});
     urlTable->horizontalHeader()->setStretchLastSection(true);
     urlTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     urlTable->setAlternatingRowColors(true);
@@ -1513,14 +1585,19 @@ void MainWindow::createUrlHistoryTab()
         QFile file(filename);
         if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
             QTextStream out(&file);
-            out.setEncoding(QStringConverter::Utf8);
-            out << "Время;Клиент;VPN IP;Метод;URL\n";
+            #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+            out.setCodec("UTF-8");
+#endif
+            out << "Время;Клиент;VPN IP;Метод;Тип;URL\n";
 
             for (const UrlAccess &acc : urlHistory) {
+                QString reqType = MainWindow::isAutomaticRequest(acc.url, acc.method)
+                    ? "Авто" : "Пользователь";
                 out << acc.timestamp.toString("dd.MM.yyyy HH:mm:ss") << ";"
                 << acc.clientName << ";"
                 << acc.clientIP << ";"
                 << acc.method << ";"
+                << reqType << ";"
                 << acc.url << "\n";
             }
             file.close();
@@ -1538,6 +1615,8 @@ void MainWindow::createUrlHistoryTab()
     connect(urlClientFilter, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::updateUrlTable);
     connect(urlMethodFilter, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::updateUrlTable);
+    connect(urlTypeFilter, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::updateUrlTable);
 }
 
@@ -1578,11 +1657,27 @@ void MainWindow::updateUrlTable()
     QString filterClient = urlClientFilter->currentText();
     QString filterMethod = urlMethodFilter->currentText();
 
+    QString filterType = urlTypeFilter ? urlTypeFilter->currentText() : "Все";
+
     // Фильтруем записи
     QList<UrlAccess> filtered;
     for (const UrlAccess &acc : urlHistory) {
         if (filterClient != "Все" && acc.clientName != filterClient) continue;
-        if (filterMethod != "Все" && acc.method != filterMethod) continue;
+
+        // Фильтр по методу: "HTTPS" захватывает все HTTPS-варианты
+        if (filterMethod != "Все") {
+            bool methodMatch = (acc.method == filterMethod) ||
+                               (filterMethod == "HTTPS" && acc.method.startsWith("HTTPS"));
+            if (!methodMatch) continue;
+        }
+
+        // Фильтр по типу: пользовательские / автоматические
+        if (filterType != "Все") {
+            bool isAuto = isAutomaticRequest(acc.url, acc.method);
+            if (filterType.contains("Пользовательские") && isAuto) continue;
+            if (filterType.contains("Автоматические") && !isAuto) continue;
+        }
+
         filtered.append(acc);
     }
 
@@ -1624,11 +1719,21 @@ void MainWindow::updateUrlTable()
 
         urlTable->setItem(row, 3, methodItem);
 
+        // Тип (авто / пользователь)
+        bool isAuto = MainWindow::isAutomaticRequest(acc.url, acc.method);
+        QTableWidgetItem *typeItem = new QTableWidgetItem(isAuto ? "🤖 Авто" : "👤 Польз.");
+        typeItem->setFlags(typeItem->flags() & ~Qt::ItemIsEditable);
+        typeItem->setForeground(isAuto ? QColor(150, 150, 150) : QColor(0, 120, 0));
+        typeItem->setToolTip(isAuto ? "Автоматический (телеметрия, фоновые сервисы)"
+                                    : "Пользовательский запрос");
+        urlTable->setItem(row, 4, typeItem);
+
         // URL
         QTableWidgetItem *urlItem = new QTableWidgetItem(acc.url);
         urlItem->setFlags(urlItem->flags() & ~Qt::ItemIsEditable);
         urlItem->setToolTip(acc.url);  // полный URL в подсказке
-        urlTable->setItem(row, 4, urlItem);
+        if (isAuto) urlItem->setForeground(QColor(170, 170, 170));
+        urlTable->setItem(row, 5, urlItem);
 
         row++;
     }
@@ -2031,6 +2136,7 @@ void MainWindow::createLogsTab()
     txtAllLogs = new QTextEdit();
     txtAllLogs->setReadOnly(true);
     txtAllLogs->setFont(QFont("Monospace", 9));
+    txtAllLogs->document()->setMaximumBlockCount(MW_MAX_LOG_LINES);
     mainLayout->addWidget(txtAllLogs);
 
     // ── Строка быстрой статистики ─────────────────────────────────────────
@@ -2311,6 +2417,7 @@ void MainWindow::startTor()
 
     // Создаем новый процесс с parent
     torProcess = new QProcess(this);
+    torProcess->setWorkingDirectory("/");
 
     // Подключаем сигналы до запуска
     connect(torProcess, &QProcess::started, this, &MainWindow::onTorStarted);
@@ -2499,7 +2606,7 @@ void MainWindow::onTorReadyRead()
         // Запускаем мониторинг сразу как Tor поднялся (для ControlPort ADDRMAP)
         if (dnsMonitor) {
             QTimer::singleShot(1500, this, [this]() {
-                dnsMonitor->startMonitoring("");
+                QMetaObject::invokeMethod(dnsMonitor, [this](){ dnsMonitor->startMonitoring(""); }, Qt::QueuedConnection);
             });
         }
     }
@@ -2965,7 +3072,7 @@ void MainWindow::startOpenVPNServer()
                 if (error == QProcess::FailedToStart) {
                     addLogMessage("OpenVPN не удалось запустить", "error");
                 }
-            }, Qt::UniqueConnection);
+            });
 
     // Процесс запустился — кнопка Стоп должна быть активна
     btnStartServer->setEnabled(false);
@@ -3027,7 +3134,7 @@ void MainWindow::stopOpenVPNServer()
     if (dnsMonitor) {
         QElapsedTimer dnsTimer;
         dnsTimer.start();
-        dnsMonitor->stopMonitoring();
+        QMetaObject::invokeMethod(dnsMonitor, &DnsMonitor::stopMonitoring, Qt::BlockingQueuedConnection);
         if (dnsTimer.elapsed() > 1000) {
             addLogMessage("⚠️ Остановка DNS монитора заняла " + QString::number(dnsTimer.elapsed()) + " мс", "warning");
         }
@@ -3174,7 +3281,7 @@ void MainWindow::onServerStartedHandler()
         if (*attemptCount <= MAX_ATTEMPTS) {
             addLogMessage(QString("📡 Попытка %1/%2 запуска DNS монитора...")
             .arg(*attemptCount).arg(MAX_ATTEMPTS), "info");
-            dnsMonitor->startMonitoring(network);
+            QMetaObject::invokeMethod(dnsMonitor, [this, network](){ dnsMonitor->startMonitoring(network); }, Qt::QueuedConnection);
             monitorCheckTimer->start(3000);
         }
     };
@@ -3183,7 +3290,10 @@ void MainWindow::onServerStartedHandler()
     connect(monitorCheckTimer, &QTimer::timeout, this,
             [this, network, monitorCheckTimer, attemptCount, MAX_ATTEMPTS]() {
 
-                bool isMonitoring = dnsMonitor->isMonitoring();
+                bool isMonitoring = false;
+                QMetaObject::invokeMethod(dnsMonitor, [this, &isMonitoring](){
+                    isMonitoring = dnsMonitor->isMonitoring();
+                }, Qt::BlockingQueuedConnection);
 
                 if (isMonitoring) {
                     addLogMessage("✅ DNS монитор успешно запущен", "success");
@@ -3195,8 +3305,17 @@ void MainWindow::onServerStartedHandler()
                 else if (*attemptCount < MAX_ATTEMPTS) {
                     addLogMessage("⚠️ DNS монитор не запустился, повторная попытка...", "warning");
 
-                    QString tunIface = dnsMonitor->detectTunInterface();
-                    if (tunIface.isEmpty()) {
+                    // Проверяем через /proc — без блокирующих вызовов в main thread
+                    bool tunFound = false;
+                    { QFile pf("/proc/net/dev");
+                      if (pf.open(QIODevice::ReadOnly)) {
+                          while (!pf.atEnd()) {
+                              if (QString::fromUtf8(pf.readLine()).trimmed().startsWith("tun"))
+                                  { tunFound = true; break; }
+                          }
+                      }
+                    }
+                    if (!tunFound) {
                         addLogMessage("🔍 TUN интерфейс ещё не создан, ждём...", "info");
                         // В этой лямбде тоже нужно захватить MAX_ATTEMPTS
                         QTimer::singleShot(2000, this, [this, network, monitorCheckTimer, attemptCount, MAX_ATTEMPTS]() {
@@ -3210,7 +3329,7 @@ void MainWindow::onServerStartedHandler()
                             (*attemptCount)++;
                             addLogMessage(QString("📡 Повторная попытка %1/%2...")
                             .arg(*attemptCount).arg(MAX_ATTEMPTS), "info");
-                            dnsMonitor->startMonitoring(network);
+                            QMetaObject::invokeMethod(dnsMonitor, [this, network](){ dnsMonitor->startMonitoring(network); }, Qt::QueuedConnection);
                             monitorCheckTimer->start(3000);
                         });
                     }
@@ -3255,13 +3374,16 @@ void MainWindow::verifyDnsMonitorRunning()
     if (!dnsMonitor) return;
 
     // Проверяем через 30 секунд после запуска
-    bool isRunning = dnsMonitor->isMonitoring();  // используем публичный метод
+    bool isRunning = false;
+    QMetaObject::invokeMethod(dnsMonitor, [this, &isRunning](){
+        isRunning = dnsMonitor->isMonitoring();
+    }, Qt::BlockingQueuedConnection);
 
     if (!isRunning && serverMode) {
         addLogMessage("⚠️ DNS монитор не работает, пробуем перезапустить...", "warning");
 
         QString network = txtServerNetwork ? txtServerNetwork->text().trimmed() : "10.8.0.0/24";
-        dnsMonitor->startMonitoring(network);
+        QMetaObject::invokeMethod(dnsMonitor, [this, network](){ dnsMonitor->startMonitoring(network); }, Qt::QueuedConnection);
 
         // Проверяем ещё раз через 5 секунд
         QTimer::singleShot(5000, this, [this]() {
@@ -3291,9 +3413,18 @@ void MainWindow::logDnsMonitorDiagnostics()
         addLogMessage("  ❌ tcpdump не найден! Установите: sudo apt install tcpdump", "error");
     }
 
-    // Проверяем TUN интерфейс через DNS монитор
-    if (dnsMonitor) {
-        QString tunIface = dnsMonitor->detectTunInterface();  // используем метод DNS монитора
+    // Проверяем TUN интерфейс напрямую через /proc (без блокирующих вызовов)
+    {
+        QString tunIface;
+        QFile f("/proc/net/dev");
+        if (f.open(QIODevice::ReadOnly)) {
+            while (!f.atEnd()) {
+                QString line = QString::fromUtf8(f.readLine()).trimmed();
+                if (line.startsWith("tun") && line.contains(':'))
+                    tunIface = line.split(':').first().trimmed();
+            }
+            f.close();
+        }
         if (!tunIface.isEmpty()) {
             addLogMessage("  ✅ TUN интерфейс: " + tunIface, "info");
 
@@ -3455,18 +3586,10 @@ void MainWindow::onServerError(QProcess::ProcessError error)
 // реальное обновление произойдёт один раз через delayMs мс.
 void MainWindow::scheduleClientsUpdate(int delayMs)
 {
-    if (!m_clientsUpdateDebounce) {
-        m_clientsUpdateDebounce = new QTimer(this);
-        m_clientsUpdateDebounce->setSingleShot(true);
-        connect(m_clientsUpdateDebounce, &QTimer::timeout,
-                this, &MainWindow::updateClientsTable);
-    }
-    // Если таймер уже запущен — сдвигаем срабатывание на delayMs от сейчас
-    // (используем минимальный из оставшегося и нового)
-    int remaining = m_clientsUpdateDebounce->isActive()
-        ? m_clientsUpdateDebounce->remainingTime() : INT_MAX;
-    int fire = qMin(remaining, delayMs);
-    m_clientsUpdateDebounce->start(fire);
+    // Каждый вызов планирует независимое срабатывание через delayMs.
+    // Так покрываются все временные окна записи статус-файла OpenVPN (каждые 5с).
+    // isUpdating внутри updateClientsTable защищает от параллельных вызовов.
+    QTimer::singleShot(delayMs, this, &MainWindow::updateClientsTable);
 }
 
 void MainWindow::onServerReadyRead()
@@ -3497,8 +3620,13 @@ void MainWindow::onServerReadyRead()
             txtClientsLog->append(QString("<span style='color:green;'>[%1] Подключение: %2</span>")
             .arg(timestamp).arg(clientAddr));
 
-            // Используем один отложенный вызов вместо нескольких
-            scheduleClientsUpdate(2000);
+            // Волны обновления: статус-файл OpenVPN пишется каждые 5с,
+            // поэтому нужно накрыть окно 0..10с несколькими попытками
+            scheduleClientsUpdate(200);
+            scheduleClientsUpdate(1000);
+            scheduleClientsUpdate(3000);
+            scheduleClientsUpdate(6000);   // первая гарантированная запись статуса
+            scheduleClientsUpdate(10000);  // запасная попытка
             QTimer::singleShot(1500, this, &MainWindow::checkIPLeak);
 
         } else if (trimmed.contains("will cause previous active sessions")) {
@@ -3681,7 +3809,15 @@ void MainWindow::updateClientsTable()
         }
 
         QString line = rawLine.trimmed();
-        if (!line.startsWith("CLIENT_LIST,")) continue;
+        if (!line.startsWith("CLIENT_LIST,")) {
+            // Диагностика формата: если файл не пустой но нет CLIENT_LIST - логируем первые строки
+            if (processedLines == 1 && !line.startsWith("TITLE") && !line.startsWith("TIME")
+                && !line.startsWith("HEADER") && !line.startsWith("ROUTING_TABLE")
+                && !line.startsWith("GLOBAL_STATS") && !line.startsWith("END")) {
+                addLogMessage("⚠️ Статус-файл: неожиданный формат строки: " + line.left(80), "debug");
+            }
+            continue;
+        }
 
         QStringList p = line.split(',');
         if (p.size() < 8) continue;
@@ -3731,6 +3867,11 @@ void MainWindow::updateClientsTable()
         newClients[key] = client;
     }
 
+    // Диагностика: логируем количество найденных клиентов (только при изменении)
+    if (newClients.size() != clientsCache.size()) {
+        addLogMessage(QString("📋 Статус VPN: найдено клиентов: %1").arg(newClients.size()), "info");
+    }
+
     if (globalTimeout.remainingTime() <= 0) {
         addLogMessage("❌ Глобальный таймаут после парсинга", "error");
         isUpdating = false;
@@ -3740,10 +3881,17 @@ void MainWindow::updateClientsTable()
     // Вычисляем interval ДО обновления lastClientRefreshMs
     qint64 interval = (lastClientRefreshMs > 0) ? (nowMs - lastClientRefreshMs) : 0;
 
+    // Синхронизируем трафик и сессии ДО обновления кэша
+    // (oldClients = текущий clientsCache до перезаписи)
+    syncRegistryTraffic(newClients, clientsCache);
+
     // Обновляем кэш
     clientsCache = newClients;
     activeIPsPerClient = newActiveIPsPerClient;
     lastClientRefreshMs = nowMs;
+
+    // Обновляем реестр клиентов (онлайн/офлайн статус)
+    updateRegistryTable();
 
     // Асинхронное обновление DNS монитора
     if (dnsMonitor && globalTimeout.remainingTime() > 1000) {
@@ -4382,7 +4530,9 @@ void MainWindow::showClientSessionHistory()
         QFile f(path);
         if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return;
         QTextStream out(&f);
-        out.setEncoding(QStringConverter::Utf8);
+        #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+            out.setCodec("UTF-8");
+#endif
         out << "Клиент;Подключился;Отключился;Длительность;IP источника;VPN IP;Получено;Отправлено\n";
 
         auto fmtBytes = [](qint64 b) -> QString {
@@ -4549,6 +4699,126 @@ void MainWindow::loadClientRegistry()
     }
 
     updateRegistryTable();
+
+    // Уведомляем бота о реестре сразу после загрузки.
+    // Без этого cachedRegistry в TelegramBotManager остаётся пустым
+    // до первого изменения реестра — /list показывал "Реестр пуст".
+    emit registryUpdated(clientRegistry);
+}
+
+// ─── Синхронизация трафика и сессий из live-данных OpenVPN ──────────────────
+//
+// Вызывается каждый раз когда updateClientsTable получает свежие данные из
+// /tmp/openvpn-status.log. Делает три вещи:
+//   1. Обновляет totalBytesRx/Tx в clientRegistry накопительно
+//   2. Создаёт новую SessionRecord когда клиент появляется в статусе (коннект)
+//   3. Закрывает SessionRecord когда клиент исчезает из статуса (дисконнект)
+void MainWindow::syncRegistryTraffic(const QMap<QString, ClientInfo> &newClients,
+                                     const QMap<QString, ClientInfo> &oldClients)
+{
+    QMutexLocker locker(&registryMutex);
+    bool changed = false;
+    QDateTime now = QDateTime::currentDateTime();
+
+    // --- 1. Обновляем трафик и детектируем КОННЕКТЫ ---
+    for (auto it = newClients.cbegin(); it != newClients.cend(); ++it) {
+        const ClientInfo &live = it.value();
+        const QString &cn = live.commonName;
+        if (cn.isEmpty() || cn == "UNDEF") continue;
+
+        // Создаём запись в реестре если клиент новый
+        if (!clientRegistry.contains(cn)) {
+            ClientRecord newRec;
+            newRec.displayName = cn;
+            newRec.firstSeen   = live.connectedSince.isValid() ? live.connectedSince : now;
+            newRec.lastSeen    = now;
+            clientRegistry[cn] = newRec;
+            addLogMessage(QString("📋 Реестр: добавлен новый клиент %1").arg(cn), "info");
+        }
+
+        ClientRecord &rec = clientRegistry[cn];
+        rec.lastSeen = now;
+        rec.knownIPs.insert(live.realAddress.split(':').first());
+
+        // Обновляем накопленный трафик: берём максимум (байты только растут)
+        if (live.bytesReceived > rec.totalBytesRx) {
+            rec.totalBytesRx = live.bytesReceived;
+        }
+        if (live.bytesSent > rec.totalBytesTx) {
+            rec.totalBytesTx = live.bytesSent;
+        }
+
+        // Детектируем коннект: клиент есть в newClients но не было в oldClients
+        bool wasConnected = false;
+        for (auto oit = oldClients.cbegin(); oit != oldClients.cend(); ++oit) {
+            if (oit.value().commonName == cn &&
+                oit.value().connectedSinceEpoch == live.connectedSinceEpoch) {
+                wasConnected = true;
+                break;
+            }
+        }
+
+        if (!wasConnected && live.connectedSince.isValid()) {
+            // Новая сессия — создаём SessionRecord
+            SessionRecord sess;
+            sess.connectedAt   = live.connectedSince;
+            sess.sourceIP      = live.realAddress.split(':').first();
+            sess.vpnIP         = live.virtualAddress;
+            sess.bytesReceived = 0;
+            sess.bytesSent     = 0;
+            sess.durationSeconds = 0;
+            rec.sessions.prepend(sess);   // новые сверху
+            rec.sessionCount = rec.sessions.size();
+            // Ограничиваем историю сессий
+            while (rec.sessions.size() > 200) rec.sessions.removeLast();
+            addLogMessage(QString("🔗 Сессия: %1 подключился с %2").arg(cn, sess.sourceIP), "info");
+            changed = true;
+        }
+    }
+
+    // --- 2. Детектируем ДИСКОННЕКТЫ ---
+    for (auto oit = oldClients.cbegin(); oit != oldClients.cend(); ++oit) {
+        const ClientInfo &old = oit.value();
+        const QString &cn = old.commonName;
+        if (cn.isEmpty() || cn == "UNDEF") continue;
+
+        // Проверяем исчез ли клиент с тем же connectedSinceEpoch
+        bool stillOnline = false;
+        for (auto nit = newClients.cbegin(); nit != newClients.cend(); ++nit) {
+            if (nit.value().commonName == cn &&
+                nit.value().connectedSinceEpoch == old.connectedSinceEpoch) {
+                stillOnline = true;
+                break;
+            }
+        }
+
+        if (!stillOnline && clientRegistry.contains(cn)) {
+            ClientRecord &rec = clientRegistry[cn];
+            // Закрываем открытую сессию (disconnectedAt не заполнено)
+            for (SessionRecord &sess : rec.sessions) {
+                if (!sess.disconnectedAt.isValid() &&
+                    sess.connectedAt == old.connectedSince) {
+                    sess.disconnectedAt  = now;
+                    sess.durationSeconds = sess.connectedAt.secsTo(now);
+                    sess.bytesReceived   = old.bytesReceived;
+                    sess.bytesSent       = old.bytesSent;
+                    // Накапливаем суммарный трафик за все сессии
+                    rec.totalOnlineSeconds += sess.durationSeconds;
+                    addLogMessage(QString("🔌 Сессия: %1 отключился, длительность %2 сек")
+                                  .arg(cn).arg(sess.durationSeconds), "info");
+                    changed = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (changed) {
+        // Сохраняем на диск асинхронно чтобы не тормозить UI
+        locker.unlock();
+        QMetaObject::invokeMethod(this, &MainWindow::saveClientRegistry, Qt::QueuedConnection);
+        locker.relock();
+    }
 }
 
 void MainWindow::saveClientRegistry()
@@ -5851,7 +6121,7 @@ void MainWindow::createServerConfig()
     // ── Прочее ────────────────────────────────────────────────────────────
     out << "persist-key\n";
     out << "persist-tun\n\n";
-    out << "status /tmp/openvpn-status.log 5\n";
+    out << "status /tmp/openvpn-status.log 2\n";
     out << "status-version 2\n";
     out << "verb 3\n";
     out << "mute 20\n\n";
@@ -6912,28 +7182,34 @@ void MainWindow::createTorConfig()
         QSet<QString> usedTransports;
         QStringList validBridges;
 
-        // Пытаемся использовать obfs4proxy если есть
-        QString obfs4Path = "/usr/bin/obfs4proxy";
-        QString transportPath;
+        // Определяем пути к транспортным плагинам:
+        // - lyrebird поддерживает obfs4 И webtunnel
+        // - obfs4proxy поддерживает только obfs4
+        QString lyrebirdPath  = findLyrebirdPath();   // предпочтительный
+        QString obfs4Path;
+        if (QFile::exists("/usr/bin/obfs4proxy"))
+            obfs4Path = "/usr/bin/obfs4proxy";
+        else if (QFile::exists("/usr/local/bin/obfs4proxy"))
+            obfs4Path = "/usr/local/bin/obfs4proxy";
 
-        if (QFile::exists(obfs4Path)) {
-            transportPath = obfs4Path;
-            addLogMessage("✅ Используется obfs4proxy", "info");
-        } else {
-            QString lyrebirdPath = findLyrebirdPath();
-            if (!lyrebirdPath.isEmpty()) {
-                transportPath = lyrebirdPath;
-                addLogMessage("✅ Используется lyrebird", "info");
-            }
-        }
+        if (!lyrebirdPath.isEmpty())
+            addLogMessage("✅ Используется lyrebird (obfs4 + webtunnel)", "info");
+        else if (!obfs4Path.isEmpty())
+            addLogMessage("✅ Используется obfs4proxy (только obfs4)", "info");
+        else
+            addLogMessage("⚠️ Транспортный плагин не найден", "warning");
 
-        // Фильтруем мосты
+        // Фильтруем мосты и проверяем совместимость транспорта
         for (const QString &bridge : configuredBridges) {
             QString type = detectBridgeType(bridge);
 
             if (type == "webtunnel") {
-                addLogMessage("⚠️ webtunnel мосты временно отключены (проблемы с транспортом)", "warning");
-                continue;
+                // webtunnel требует lyrebird — obfs4proxy не поддерживает
+                if (lyrebirdPath.isEmpty()) {
+                    addLogMessage("⚠️ webtunnel мост пропущен: lyrebird не найден. "
+                                  "Установите lyrebird: apt install lyrebird", "warning");
+                    continue;
+                }
             }
 
             if (!type.isEmpty() && type != "unknown") {
@@ -6942,10 +7218,18 @@ void MainWindow::createTorConfig()
             }
         }
 
-        // Записываем плагины
-        if (!transportPath.isEmpty()) {
-            for (const QString &transport : usedTransports) {
-                out << "ClientTransportPlugin " << transport << " exec " << transportPath << "\n";
+        // Записываем ClientTransportPlugin для каждого используемого транспорта.
+        // webtunnel и obfs4 через lyrebird; obfs4 через obfs4proxy если lyrebird недоступен.
+        for (const QString &transport : usedTransports) {
+            QString pluginPath;
+            if (transport == "webtunnel") {
+                pluginPath = lyrebirdPath; // только lyrebird
+            } else {
+                // obfs4, snowflake — предпочитаем lyrebird, fallback obfs4proxy
+                pluginPath = !lyrebirdPath.isEmpty() ? lyrebirdPath : obfs4Path;
+            }
+            if (!pluginPath.isEmpty()) {
+                out << "ClientTransportPlugin " << transport << " exec " << pluginPath << "\n";
             }
         }
 
@@ -9491,7 +9775,9 @@ void MainWindow::exportStatsToCSV()
     QFile file(filename);
     if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         QTextStream out(&file);
-        out.setEncoding(QStringConverter::Utf8);
+        #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
+            out.setCodec("UTF-8");
+#endif
 
         // Заголовки
         out << "Клиент;Всего запросов;DNS;HTTP;HTTPS;Подозрительно;Категорий;Последний запрос\n";

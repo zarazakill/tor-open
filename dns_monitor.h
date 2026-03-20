@@ -9,6 +9,13 @@
 #include <QTimer>
 #include <QTcpSocket>
 #include <QMutex>
+#include <QRecursiveMutex>
+// Qt5/Qt6 cross-version QMutexLocker for QRecursiveMutex
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+using RecursiveMutexLocker = QMutexLocker<QRecursiveMutex>;
+#else
+using RecursiveMutexLocker = QMutexLocker;
+#endif
 #include <QHostInfo>
 #include <QElapsedTimer>
 #include <QThread>
@@ -120,6 +127,10 @@ private:
     int tcpdumpRestartDelay = 1000;
     qint64 lastPacketTime = 0;
     QTimer *stabilityTimer = nullptr;
+    // Диагностика быстрых сбоев tcpdump
+    int    m_tcpdumpFastFailCount = 0;   // счётчик сбоев < 2 сек подряд
+    bool   m_tcpdumpSimpleMode    = false; // упрощённый режим после 3 быстрых сбоев
+    qint64 m_tcpdumpStartTime     = 0;   // время запуска для подсчёта uptime
 
     // Источник 2: Tor ControlPort
     QTcpSocket *torControl = nullptr;
@@ -154,12 +165,16 @@ private:
     QTimer *logFlushTimer = nullptr;
     QMutex logMutex;
     QMutex clientMapMutex;
-    mutable QMutex cacheMutex;
+    mutable QRecursiveMutex cacheMutex;
 
     // Поля для парсинга TLS
     QByteArray m_currentPacket;
     QString m_currentSrcIP;
     qint64 m_currentPacketTime = 0;
+    // Для HTTP Host: header (multi-line tcpdump -A output)
+    QString m_lastTcpSrcIP;
+    QString m_lastTcpDstIP;
+    bool    m_inHttpPayload = false;
 
     // статистика и категоризация
     QMap<QString, DnsClientStats> clientStats;
