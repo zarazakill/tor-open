@@ -1,0 +1,23 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Tor Manager
+GenericName=Tor and VPN Manager
+Comment=Manage Tor and OpenVPN connections with enhanced privacy features
+Exec=pkexec /usr/local/bin/TorManager
+Icon=tormanager
+Terminal=false
+Categories=Network;Security;Qt;
+Keywords=tor;vpn;openvpn;privacy;anonymity;security;bridge;proxy;
+StartupNotify=true
+StartupWMClass=TorManager
+MimeType=application/x-openvpn-profile;
+Actions=StartTor;StartVPN;
+
+[Desktop Action StartTor]
+Name=Start Tor
+Exec=pkexec /usr/local/bin/TorManager --start-tor
+
+[Desktop Action StartVPN]
+Name=Start VPN
+Exec=pkexec /usr/local/bin/TorManager --start-vpn
