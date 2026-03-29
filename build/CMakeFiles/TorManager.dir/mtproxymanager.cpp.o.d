@@ -393,6 +393,84 @@ CMakeFiles/TorManager.dir/mtproxymanager.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QExplicitlySharedDataPointer \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QDateTime \
  /usr/include/x86_64-linux-gnu/qt6/QtPositioning/QGeoCoordinate \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QWidget \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtwidgetsglobal.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtguiglobal.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtgui-config.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtguiexports.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtwidgets-config.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtwidgetsexports.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qwindowdefs.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qmargins.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qaction.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qkeysequence.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qicon.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qsize.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qpixmap.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qpaintdevice.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qrect.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qpoint.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qcolor.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qrgb.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qrgba64.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qimage.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qpixelformat.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtransform.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qpolygon.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qregion.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qline.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qpalette.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qbrush.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qfont.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qfontmetrics.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qfontinfo.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qsizepolicy.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qcursor.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qbitmap.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QGroupBox \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qgroupbox.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qframe.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QLineEdit \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qlineedit.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextcursor.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextdocument.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qurl.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextformat.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qpen.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextoption.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QPushButton \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qpushbutton.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractbutton.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QLabel \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qlabel.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qpicture.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QTableWidget \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtablewidget.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtableview.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractitemview.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractscrollarea.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qabstractitemmodel.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qitemselectionmodel.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractitemdelegate.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qstyleoption.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractspinbox.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtGui/qvalidator.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qregularexpression.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qslider.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractslider.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qstyle.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtabbar.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtabwidget.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qrubberband.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QComboBox \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qcombobox.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/QRandomGenerator \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/qrandom.h \
+ /usr/include/c++/12/random /usr/include/c++/12/bits/random.h \
+ /usr/include/x86_64-linux-gnu/c++/12/bits/opt_random.h \
+ /usr/include/c++/12/bits/random.tcc \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QRegularExpression \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qregularexpression.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QFile \
@@ -430,8 +508,6 @@ CMakeFiles/TorManager.dir/mtproxymanager.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qjsonvalue.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qcborvalue.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qcborcommon.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qregularexpression.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qurl.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/quuid.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QJsonObject \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qjsonobject.h \
@@ -439,35 +515,11 @@ CMakeFiles/TorManager.dir/mtproxymanager.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qjsonarray.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QApplication \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qapplication.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtwidgetsglobal.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtguiglobal.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtgui-config.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtguiexports.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtwidgets-config.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtwidgetsexports.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qcoreapplication.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qcoreevent.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qeventloop.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qnativeinterface.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qcoreapplication_platform.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qwindowdefs.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qpoint.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qsize.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qmargins.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qcursor.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qbitmap.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qpixmap.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qpaintdevice.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qrect.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qcolor.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qrgb.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qrgba64.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qimage.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qpixelformat.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtransform.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qpolygon.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qregion.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qline.h \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/qguiapplication.h \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/qinputmethod.h \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/qguiapplication_platform.h \
@@ -476,43 +528,13 @@ CMakeFiles/TorManager.dir/mtproxymanager.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QMessageBox \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qmessagebox.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qdialog.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qaction.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qkeysequence.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qicon.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qpalette.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qbrush.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qfont.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qfontmetrics.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qfontinfo.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qsizepolicy.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QHeaderView \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qheaderview.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractitemview.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractscrollarea.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qframe.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qabstractitemmodel.h \
- /usr/include/x86_64-linux-gnu/qt6/QtCore/qitemselectionmodel.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractitemdelegate.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qstyleoption.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractspinbox.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qvalidator.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qslider.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qabstractslider.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qstyle.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtabbar.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qtabwidget.h \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qrubberband.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QMenu \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qmenu.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QInputDialog \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qinputdialog.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qlineedit.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextcursor.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextdocument.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextformat.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qpen.h \
- /usr/include/x86_64-linux-gnu/qt6/QtGui/qtextoption.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QFileDialog \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qfiledialog.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qdir.h \
@@ -521,4 +543,13 @@ CMakeFiles/TorManager.dir/mtproxymanager.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QSettings \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qsettings.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QSystemTrayIcon \
- /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qsystemtrayicon.h
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qsystemtrayicon.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QVBoxLayout \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qboxlayout.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qlayout.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qlayoutitem.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qboxlayout.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qgridlayout.h \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QHBoxLayout \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QGridLayout \
+ /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qgridlayout.h

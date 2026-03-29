@@ -19,6 +19,14 @@
 #include <QMutex>
 #include <QGeoPositionInfoSource>
 #include <QGeoCoordinate>
+#include <QWidget>
+#include <QGroupBox>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QLabel>
+#include <QTableWidget>
+#include <QComboBox>
+#include <QRandomGenerator>
 
 /**
  * Структура для хранения информации о подключении клиента MTProxy
@@ -108,7 +116,7 @@ signals:
 
 public slots:
     void updateStats();
-    void refreshGeoLocation(const QString &ip);
+    // refreshGeoLocation удалён - больше не используется
 
 private slots:
     void onProxyProcessOutput();
@@ -136,7 +144,11 @@ private:
     // Вспомогательные
     bool validateSecret(const QString &secret);
     QString formatBytes(qint64 bytes) const;
+
+public:
     QString formatDuration(qint64 seconds) const;
+
+private:
     void updatePeakConnections();
 
     // Компоненты

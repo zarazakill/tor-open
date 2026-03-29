@@ -18,6 +18,9 @@
 #include <QTextStream>
 #include <QSettings>
 #include <QSystemTrayIcon>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGridLayout>
 
 // ==================== MTProxyManager Implementation ====================
 

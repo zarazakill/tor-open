@@ -968,6 +968,7 @@ CMakeFiles/TorManager.dir/tgbot_manager.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QExplicitlySharedDataPointer \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QDateTime \
  /usr/include/x86_64-linux-gnu/qt6/QtPositioning/QGeoCoordinate \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/QRandomGenerator \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QApplication \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qapplication.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QFileInfo \

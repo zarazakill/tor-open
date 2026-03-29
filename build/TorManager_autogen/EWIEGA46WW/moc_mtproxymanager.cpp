@@ -9,6 +9,7 @@
 #include <memory>
 #include "../../../mtproxymanager.h"
 #include <QtNetwork/QSslError>
+#include <QtGui/qtextcursor.h>
 #include <QtCore/qmetatype.h>
 #if !defined(Q_MOC_OUTPUT_REVISION)
 #error "The header file 'mtproxymanager.h' doesn't include <QObject>."
@@ -27,7 +28,7 @@ QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
 namespace {
 struct qt_meta_stringdata_MTProxyManager_t {
-    uint offsetsAndSizes[66];
+    uint offsetsAndSizes[62];
     char stringdata0[15];
     char stringdata1[16];
     char stringdata2[1];
@@ -49,18 +50,16 @@ struct qt_meta_stringdata_MTProxyManager_t {
     char stringdata18[11];
     char stringdata19[6];
     char stringdata20[12];
-    char stringdata21[19];
-    char stringdata22[3];
-    char stringdata23[21];
-    char stringdata24[20];
-    char stringdata25[23];
-    char stringdata26[9];
-    char stringdata27[21];
-    char stringdata28[7];
-    char stringdata29[20];
-    char stringdata30[15];
-    char stringdata31[6];
-    char stringdata32[27];
+    char stringdata21[21];
+    char stringdata22[20];
+    char stringdata23[23];
+    char stringdata24[9];
+    char stringdata25[21];
+    char stringdata26[7];
+    char stringdata27[20];
+    char stringdata28[15];
+    char stringdata29[6];
+    char stringdata30[27];
 };
 #define QT_MOC_LITERAL(ofs, len) \
     uint(sizeof(qt_meta_stringdata_MTProxyManager_t::offsetsAndSizes) + ofs), len 
@@ -87,18 +86,16 @@ Q_CONSTINIT static const qt_meta_stringdata_MTProxyManager_t qt_meta_stringdata_
         QT_MOC_LITERAL(199, 10),  // "proxyError"
         QT_MOC_LITERAL(210, 5),  // "error"
         QT_MOC_LITERAL(216, 11),  // "updateStats"
-        QT_MOC_LITERAL(228, 18),  // "refreshGeoLocation"
-        QT_MOC_LITERAL(247, 2),  // "ip"
-        QT_MOC_LITERAL(250, 20),  // "onProxyProcessOutput"
-        QT_MOC_LITERAL(271, 19),  // "onProxyProcessError"
-        QT_MOC_LITERAL(291, 22),  // "onProxyProcessFinished"
-        QT_MOC_LITERAL(314, 8),  // "exitCode"
-        QT_MOC_LITERAL(323, 20),  // "QProcess::ExitStatus"
-        QT_MOC_LITERAL(344, 6),  // "status"
-        QT_MOC_LITERAL(351, 19),  // "onGeoLookupFinished"
-        QT_MOC_LITERAL(371, 14),  // "QNetworkReply*"
-        QT_MOC_LITERAL(386, 5),  // "reply"
-        QT_MOC_LITERAL(392, 26)   // "cleanupInactiveConnections"
+        QT_MOC_LITERAL(228, 20),  // "onProxyProcessOutput"
+        QT_MOC_LITERAL(249, 19),  // "onProxyProcessError"
+        QT_MOC_LITERAL(269, 22),  // "onProxyProcessFinished"
+        QT_MOC_LITERAL(292, 8),  // "exitCode"
+        QT_MOC_LITERAL(301, 20),  // "QProcess::ExitStatus"
+        QT_MOC_LITERAL(322, 6),  // "status"
+        QT_MOC_LITERAL(329, 19),  // "onGeoLookupFinished"
+        QT_MOC_LITERAL(349, 14),  // "QNetworkReply*"
+        QT_MOC_LITERAL(364, 5),  // "reply"
+        QT_MOC_LITERAL(370, 26)   // "cleanupInactiveConnections"
     },
     "MTProxyManager",
     "clientConnected",
@@ -121,8 +118,6 @@ Q_CONSTINIT static const qt_meta_stringdata_MTProxyManager_t qt_meta_stringdata_
     "proxyError",
     "error",
     "updateStats",
-    "refreshGeoLocation",
-    "ip",
     "onProxyProcessOutput",
     "onProxyProcessError",
     "onProxyProcessFinished",
@@ -143,7 +138,7 @@ Q_CONSTINIT static const uint qt_meta_data_MTProxyManager[] = {
       10,       // revision
        0,       // classname
        0,    0, // classinfo
-      16,   14, // methods
+      15,   14, // methods
        0,    0, // properties
        0,    0, // enums/sets
        0,    0, // constructors
@@ -151,24 +146,23 @@ Q_CONSTINIT static const uint qt_meta_data_MTProxyManager[] = {
        9,       // signalCount
 
  // signals: name, argc, parameters, tag, flags, initial metatype offsets
-       1,    1,  110,    2, 0x06,    1 /* Public */,
-       5,    1,  113,    2, 0x06,    3 /* Public */,
-       7,    3,  116,    2, 0x06,    5 /* Public */,
-      10,    1,  123,    2, 0x06,    9 /* Public */,
-      13,    2,  126,    2, 0x06,   11 /* Public */,
-      13,    1,  131,    2, 0x26,   14 /* Public | MethodCloned */,
-      16,    0,  134,    2, 0x06,   16 /* Public */,
-      17,    0,  135,    2, 0x06,   17 /* Public */,
-      18,    1,  136,    2, 0x06,   18 /* Public */,
+       1,    1,  104,    2, 0x06,    1 /* Public */,
+       5,    1,  107,    2, 0x06,    3 /* Public */,
+       7,    3,  110,    2, 0x06,    5 /* Public */,
+      10,    1,  117,    2, 0x06,    9 /* Public */,
+      13,    2,  120,    2, 0x06,   11 /* Public */,
+      13,    1,  125,    2, 0x26,   14 /* Public | MethodCloned */,
+      16,    0,  128,    2, 0x06,   16 /* Public */,
+      17,    0,  129,    2, 0x06,   17 /* Public */,
+      18,    1,  130,    2, 0x06,   18 /* Public */,
 
  // slots: name, argc, parameters, tag, flags, initial metatype offsets
-      20,    0,  139,    2, 0x0a,   20 /* Public */,
-      21,    1,  140,    2, 0x0a,   21 /* Public */,
-      23,    0,  143,    2, 0x08,   23 /* Private */,
-      24,    0,  144,    2, 0x08,   24 /* Private */,
-      25,    2,  145,    2, 0x08,   25 /* Private */,
-      29,    1,  150,    2, 0x08,   28 /* Private */,
-      32,    0,  153,    2, 0x08,   30 /* Private */,
+      20,    0,  133,    2, 0x0a,   20 /* Public */,
+      21,    0,  134,    2, 0x08,   21 /* Private */,
+      22,    0,  135,    2, 0x08,   22 /* Private */,
+      23,    2,  136,    2, 0x08,   23 /* Private */,
+      27,    1,  141,    2, 0x08,   26 /* Private */,
+      30,    0,  144,    2, 0x08,   28 /* Private */,
 
  // signals: parameters
     QMetaType::Void, 0x80000000 | 3,    4,
@@ -183,11 +177,10 @@ Q_CONSTINIT static const uint qt_meta_data_MTProxyManager[] = {
 
  // slots: parameters
     QMetaType::Void,
-    QMetaType::Void, QMetaType::QString,   22,
     QMetaType::Void,
     QMetaType::Void,
-    QMetaType::Void, QMetaType::Int, 0x80000000 | 27,   26,   28,
-    QMetaType::Void, 0x80000000 | 30,   31,
+    QMetaType::Void, QMetaType::Int, 0x80000000 | 25,   24,   26,
+    QMetaType::Void, 0x80000000 | 28,   29,
     QMetaType::Void,
 
        0        // eod
@@ -232,9 +225,6 @@ Q_CONSTINIT const QMetaObject MTProxyManager::staticMetaObject = { {
         QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
         // method 'updateStats'
         QtPrivate::TypeAndForceComplete<void, std::false_type>,
-        // method 'refreshGeoLocation'
-        QtPrivate::TypeAndForceComplete<void, std::false_type>,
-        QtPrivate::TypeAndForceComplete<const QString &, std::false_type>,
         // method 'onProxyProcessOutput'
         QtPrivate::TypeAndForceComplete<void, std::false_type>,
         // method 'onProxyProcessError'
@@ -268,18 +258,17 @@ void MTProxyManager::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _
         case 7: _t->proxyStopped(); break;
         case 8: _t->proxyError((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
         case 9: _t->updateStats(); break;
-        case 10: _t->refreshGeoLocation((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
-        case 11: _t->onProxyProcessOutput(); break;
-        case 12: _t->onProxyProcessError(); break;
-        case 13: _t->onProxyProcessFinished((*reinterpret_cast< std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QProcess::ExitStatus>>(_a[2]))); break;
-        case 14: _t->onGeoLookupFinished((*reinterpret_cast< std::add_pointer_t<QNetworkReply*>>(_a[1]))); break;
-        case 15: _t->cleanupInactiveConnections(); break;
+        case 10: _t->onProxyProcessOutput(); break;
+        case 11: _t->onProxyProcessError(); break;
+        case 12: _t->onProxyProcessFinished((*reinterpret_cast< std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QProcess::ExitStatus>>(_a[2]))); break;
+        case 13: _t->onGeoLookupFinished((*reinterpret_cast< std::add_pointer_t<QNetworkReply*>>(_a[1]))); break;
+        case 14: _t->cleanupInactiveConnections(); break;
         default: ;
         }
     } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
         switch (_id) {
         default: *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType(); break;
-        case 14:
+        case 13:
             switch (*reinterpret_cast<int*>(_a[1])) {
             default: *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType(); break;
             case 0:
@@ -367,13 +356,13 @@ int MTProxyManager::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 16)
+        if (_id < 15)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 16;
+        _id -= 15;
     } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 16)
+        if (_id < 15)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 16;
+        _id -= 15;
     }
     return _id;
 }
