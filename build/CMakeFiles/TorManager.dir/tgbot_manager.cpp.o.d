@@ -381,6 +381,8 @@ CMakeFiles/TorManager.dir/tgbot_manager.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkrequest.h \
  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkAccessManager \
  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
+ /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
+ /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QJsonDocument \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qjsondocument.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qjsonvalue.h \

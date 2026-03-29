@@ -636,6 +636,8 @@ CMakeFiles/TorManager.dir/TorManager_autogen/mocs_compilation.cpp.o: TorManager_
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QWidget \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QDate \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QDir \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/qdir.h \
@@ -2435,6 +2437,8 @@ CMakeFiles/TorManager.dir/main.cpp.o: /workspace/main.cpp \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QWidget \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QDate \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QDir \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/qdir.h \
@@ -3486,6 +3490,8 @@ CMakeFiles/TorManager.dir/mainwindow.cpp.o: /workspace/mainwindow.cpp \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QWidget \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QDate \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QDir \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/qdir.h \
@@ -3952,8 +3958,6 @@ CMakeFiles/TorManager.dir/mainwindow.cpp.o: /workspace/mainwindow.cpp \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qmenu.h \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QStatusBar \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qstatusbar.h \
-  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
-  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
   /usr/include/x86_64-linux-gnu/qt6/QtGui/QRegularExpressionValidator \
   /usr/include/x86_64-linux-gnu/qt6/QtGui/qvalidator.h \
   /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QApplication \
@@ -5020,6 +5024,8 @@ CMakeFiles/TorManager.dir/tgbot_manager.cpp.o: /workspace/tgbot_manager.cpp \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkrequest.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkAccessManager \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QJsonDocument \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/qjsondocument.h \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/qjsonvalue.h \
@@ -5834,10 +5840,6 @@ TorManager_autogen/EWIEGA46WW/moc_tgbot_manager.cpp:
 
 /usr/lib/gcc/x86_64-linux-gnu/12/include/sgxintrin.h:
 
-/usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy:
-
-/usr/lib/gcc/x86_64-linux-gnu/12/include/serializeintrin.h:
-
 /usr/include/x86_64-linux-gnu/qt6/QtGui/QTransform:
 
 /usr/lib/gcc/x86_64-linux-gnu/12/include/mwaitintrin.h:
@@ -6014,15 +6016,19 @@ TorManager_autogen/EWIEGA46WW/moc_tgbot_manager.cpp:
 
 /usr/include/x86_64-linux-gnu/qt6/QtCore/qfuture.h:
 
-/usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h:
-
-/usr/include/x86_64-linux-gnu/qt6/QtCore/QFuture:
-
 /usr/include/x86_64-linux-gnu/qt6/QtCore/qtcoreversion.h:
 
 /usr/include/x86_64-linux-gnu/qt6/QtCore/qfileinfo.h:
 
 /usr/include/x86_64-linux-gnu/qt6/QtCore/QDir:
+
+/usr/include/x86_64-linux-gnu/qt6/QtCore/QFuture:
+
+/usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h:
+
+/usr/lib/gcc/x86_64-linux-gnu/12/include/serializeintrin.h:
+
+/usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy:
 
 /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QWidget:
 

@@ -1,27 +1,49 @@
 ```
 # Build artifacts
 build/
-CMakeFiles/
 *.o
 *.obj
+*.d
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
 *.out
 
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Qt/MOC
+*moc_*.cpp
+*moc_*.h
+TorManager_autogen/
+
 # Dependencies
+node_modules/
 venv/
 .venv/
 __pycache__/
-*.pyc
+*.egg-info/
 
 # Logs and temp files
 *.log
 *.tmp
-
-# Editors
-.vscode/
-.idea/
+*.swp
 
 # Environment
 .env
 .env.local
 *.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
 ```
