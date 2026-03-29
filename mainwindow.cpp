@@ -3096,7 +3096,7 @@ void MainWindow::updateClientsTable()
         for (auto it = clientsCache.begin(); it != clientsCache.end(); ++it) {
             ipMap[it.value().virtualAddress] = it.value().commonName;
         }
-        dnsMonitor->updateClientMap(ipMap);
+        dnsMonitor->setClientMap(ipMap);
     }
 
     // Обновление статистики скорости через ClientStats
@@ -3145,7 +3145,7 @@ void MainWindow::updateClientsTable()
                 addLogMessage(logMsg, "warning");
 
                 if (trayIcon && chkShowTrayNotifications && chkShowTrayNotifications->isChecked()) {
-                    QMetaObject::invokeMethod(this, [this, cn, ipList]() {
+                    QMetaObject::invokeMethod(this, [this, cn, ipList, uniqueIps]() {
                         trayIcon->showMessage(
                             "⚠️ Подозрительная активность",
                             QString("Клиент '%1' подключён с %2 разных IP!\n%3")

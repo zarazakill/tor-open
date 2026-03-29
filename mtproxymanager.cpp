@@ -16,6 +16,8 @@
 #include <QInputDialog>
 #include <QFileDialog>
 #include <QTextStream>
+#include <QSettings>
+#include <QSystemTrayIcon>
 
 // ==================== MTProxyManager Implementation ====================
 
@@ -1166,13 +1168,15 @@ void MTProxyWidget::banClientIP()
         QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
 
         QProcess::execute("iptables", {"-A", "INPUT", "-s", ip, "-j", "DROP"});
-    QMessageBox::information(this, "IP заблокирован",
-                             "IP " + ip + " добавлен в чёрный список");
-        }
+        QMessageBox::information(this, "IP заблокирован",
+                                 "IP " + ip + " добавлен в чёрный список");
+    }
 }
 
 void MTProxyWidget::loadSettings()
 {
+    if (!edtPort || !edtSecret) return;
+    
     QSettings settings("TorManager", "MTProxy");
     edtPort->setText(settings.value("port", "443").toString());
     edtSecret->setText(settings.value("secret").toString());
@@ -1180,6 +1184,8 @@ void MTProxyWidget::loadSettings()
 
 void MTProxyWidget::saveSettings()
 {
+    if (!edtPort || !edtSecret) return;
+    
     QSettings settings("TorManager", "MTProxy");
     settings.setValue("port", edtPort->text());
     if (!edtSecret->text().isEmpty()) {
@@ -1192,8 +1198,9 @@ void MTProxyWidget::onClientConnected(const MTProxyClient &client)
 {
     refreshData();
 
-    // Уведомление в трее
-    QSystemTrayIcon *tray = qobject_cast<QSystemTrayIcon*>(parent()->parent());
+    // Уведомление в трее - ищем MainWindow как родительский виджет
+    QWidget *mainWindow = window();
+    QSystemTrayIcon *tray = mainWindow ? mainWindow->findChild<QSystemTrayIcon*>() : nullptr;
     if (tray) {
         tray->showMessage("Новое подключение MTProxy",
                           QString("%1 (%2)").arg(client.clientIp, client.country),
