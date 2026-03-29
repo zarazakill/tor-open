@@ -40,6 +40,7 @@
 #endif
 
 #include "tgbot_manager.h"
+#include "mtproxymanager.h"
 
 // Определения статических констант
 const int MainWindow::DEFAULT_TOR_SOCKS_PORT = 9050;
@@ -433,6 +434,32 @@ MainWindow::MainWindow(QWidget *parent)
     // Инициализация Telegram бота
     tgBotManager = new TelegramBotManager(settings, this);
 
+    // Инициализация ClientStatsManager
+    clientStats = new ClientStatsManager();
+
+    // Инициализация MTProxy
+    mtproxyManager = new MTProxyManager(this);
+    mtproxyWidget = new MTProxyWidget(mtproxyManager, this);
+
+    connect(mtproxyManager, &MTProxyManager::proxyStarted, this, &MainWindow::onMTProxyStarted);
+    connect(mtproxyManager, &MTProxyManager::proxyStopped, this, &MainWindow::onMTProxyStopped);
+    connect(mtproxyManager, &MTProxyManager::logMessage, this, &MainWindow::onMTProxyLog);
+
+    // Поиск пути к mtproto-proxy
+    QStringList mtprotoPaths = {
+        "/usr/bin/mtproto-proxy",
+        "/usr/local/bin/mtproto-proxy",
+        "/tmp/MTProxy/objs/bin/mtproto-proxy"
+    };
+
+    for (const QString &path : mtprotoPaths) {
+        if (QFile::exists(path)) {
+            mtproxyManager->setExecutablePath(path);
+            addLogMessage("MTProto-Proxy найден: " + path, "success");
+            break;
+        }
+    }
+
     // Установка путей
     tgBotManager->setCertsDir(certsDir);
     tgBotManager->setServerConfPath(serverConfigPath); // для извлечения ta.key
@@ -586,6 +613,19 @@ MainWindow::~MainWindow()
     saveSettings();
     saveBridgesToSettings();
     saveClientRegistry();
+
+    // Остановка и очистка MTProxy
+    if (mtproxyManager) {
+        mtproxyManager->stopProxy();
+        delete mtproxyManager;
+        mtproxyManager = nullptr;
+    }
+
+    // Очистка ClientStatsManager
+    if (clientStats) {
+        delete clientStats;
+        clientStats = nullptr;
+    }
 }
 
 // ========== НАСТРОЙКА ИНТЕРФЕЙСА ==========
@@ -646,13 +686,15 @@ void MainWindow::createTabWidget()
     createUrlHistoryTab(); // НОВАЯ ВКЛАДКА
     createSettingsTab();
     createLogsTab();
+    createMTProxyTab();
 
-    // Структура: 5 вкладок
+    // Структура: 6 вкладок
     tabWidget->addTab(torTab,      "🌐 Tor + VPN");
     tabWidget->addTab(clientsTab,  "👥 Клиенты");
     tabWidget->addTab(urlHistoryTab, "🌐 URL История"); // НОВАЯ
     tabWidget->addTab(settingsTab, "⚙️ Настройки");
     tabWidget->addTab(logsTab,     "📋 Журналы");
+    tabWidget->addTab(mtproxyWidget, "🚀 MTProxy");
 
     // Telegram Bot — подвкладка в Настройках
     if (tgBotManager) {
@@ -1926,6 +1968,14 @@ void MainWindow::createLogsTab()
     }
 }
 
+void MainWindow::createMTProxyTab()
+{
+    if (mtproxyWidget) {
+        // Вкладка добавляется в createTabWidget(), здесь только лог
+        addLogMessage("Вкладка MTProxy добавлена", "info");
+    }
+}
+
 void MainWindow::setupTrayIcon()
 {
     trayIcon = new QSystemTrayIcon(this);
@@ -3059,7 +3109,7 @@ void MainWindow::updateClientsTable()
         ClientInfo &client = it.value();
         QString clientId = client.commonName;
 
-        if (lastClientRefreshMs > 0) {
+        if (lastClientRefreshMs > 0 && clientStats) {
             qint64 interval = nowMs - lastClientRefreshMs;
             clientStats->updateSpeed(clientId, client.bytesReceived,
                                      client.bytesSent, interval);
@@ -3069,7 +3119,9 @@ void MainWindow::updateClientsTable()
         }
     }
 
-    clientStats->cleanup(activeClients);
+    if (clientStats) {
+        clientStats->cleanup(activeClients);
+    }
 
     // Детектор мульти-подключений
     static QSet<QString> warnedMultiConnections;
@@ -7762,3 +7814,58 @@ void MainWindow::syncBotWithSettings()
 
     addLogMessage("Настройки Telegram бота синхронизированы", "info");
 }
+
+// ==================== MTProxy SLOTS ====================
+
+void MainWindow::onMTProxyStarted()
+{
+    addLogMessage("🚀 MTProxy успешно запущен на порту " + 
+                  QString::number(mtproxyManager->getPort()), "success");
+    if (trayIcon && chkShowTrayNotifications && chkShowTrayNotifications->isChecked()) {
+        trayIcon->showMessage("MTProxy", 
+                             "Прокси-сервер запущен\n" + mtproxyManager->getProxyLink(),
+                             QSystemTrayIcon::Information, 5000);
+    }
+}
+
+void MainWindow::onMTProxyStopped()
+{
+    addLogMessage("MTProxy остановлен", "info");
+}
+
+void MainWindow::onMTProxyLog(const QString &msg, const QString &level)
+{
+    addLogMessage("[MTProxy] " + msg, level);
+}
+
+void MainWindow::startMTProxy()
+{
+    if (!mtproxyManager) {
+        addLogMessage("MTProxy менеджер не инициализирован", "error");
+        return;
+    }
+    
+    QSettings settings("TorManager", "MTProxy");
+    int port = settings.value("port", 443).toInt();
+    QString secret = settings.value("secret").toString();
+    
+    if (secret.isEmpty()) {
+        secret = MTProxyManager::generateSecureSecret();
+        settings.setValue("secret", secret);
+        settings.sync();
+        addLogMessage("Сгенерирован новый секрет для MTProxy", "info");
+    }
+    
+    addLogMessage(QString("Запуск MTProxy на порту %1...").arg(port), "info");
+    mtproxyManager->startProxy(port, secret);
+}
+
+void MainWindow::stopMTProxy()
+{
+    if (mtproxyManager && mtproxyManager->isRunning()) {
+        addLogMessage("Остановка MTProxy...", "info");
+        mtproxyManager->stopProxy();
+    }
+}
+
+// ==================== END MTProxy SLOTS ====================
