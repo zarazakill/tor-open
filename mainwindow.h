@@ -39,13 +39,6 @@
 #include <QDesktopServices>
 #include <QClipboard>
 #include <QGuiApplication>
-#include <QSaveFile>
-#include <QTemporaryFile>
-#include <QMutex>
-#include <QHeaderView>
-#include <QMessageBox>
-#include <QFileDialog>
-#include <QInputDialog>
 
 // Условное включение QTextCodec для разных версий Qt
 #if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
@@ -54,14 +47,23 @@
 #include <QTextCodec>
 #endif
 
+#include <QMutex>
+
 #ifdef Q_OS_LINUX
 #include <unistd.h>
 #include <sys/types.h>
+#include <csignal>
+#include <sys/wait.h>
+#include <execinfo.h>
+#include <cxxabi.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 #endif
 
 #include "tgbot_manager.h"
 #include "dns_monitor.h"
-#include "client_stats.h"
+#include "mtproxymanager.h"
 
 // Структура для хранения информации о клиенте
 struct ClientInfo {
@@ -108,6 +110,83 @@ struct ClientRecord {
     QDate registeredAt;
 };
 
+// Структура для статистики скорости клиента
+struct ClientSpeedStats {
+    qint64 lastRx = 0;
+    qint64 lastTx = 0;
+    qint64 lastUpdateMs = 0;
+    qint64 avgRxBps = 0;
+    qint64 avgTxBps = 0;
+    QList<qint64> rxHistory;
+    QList<qint64> txHistory;
+
+    void updateSpeed(qint64 rx, qint64 tx, qint64 nowMs) {
+        if (lastUpdateMs > 0 && nowMs > lastUpdateMs) {
+            qint64 dtMs = nowMs - lastUpdateMs;
+            if (dtMs > 0) {
+                qint64 instantRx = (rx - lastRx) * 1000 / dtMs;
+                qint64 instantTx = (tx - lastTx) * 1000 / dtMs;
+
+                rxHistory.append(instantRx);
+                txHistory.append(instantTx);
+                if (rxHistory.size() > 5) rxHistory.removeFirst();
+                if (txHistory.size() > 5) txHistory.removeFirst();
+
+                avgRxBps = 0;
+                for (qint64 v : rxHistory) avgRxBps += v;
+                avgRxBps /= rxHistory.size();
+
+                avgTxBps = 0;
+                for (qint64 v : txHistory) avgTxBps += v;
+                avgTxBps /= txHistory.size();
+            }
+        }
+        lastRx = rx;
+        lastTx = tx;
+        lastUpdateMs = nowMs;
+    }
+
+    qint64 getAvgRxSpeed() const { return avgRxBps; }
+    qint64 getAvgTxSpeed() const { return avgTxBps; }
+};
+
+// Менеджер статистики клиентов
+class ClientStatsManager {
+private:
+    QMap<QString, ClientSpeedStats> stats;
+    QMutex mutex;
+
+public:
+    void updateSpeed(const QString &clientId, qint64 rx, qint64 tx, qint64 intervalMs) {
+        QMutexLocker locker(&mutex);
+        qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        stats[clientId].updateSpeed(rx, tx, nowMs);
+    }
+
+    qint64 getAvgRxSpeed(const QString &clientId) {
+        QMutexLocker locker(&mutex);
+        return stats.value(clientId).getAvgRxSpeed();
+    }
+
+    qint64 getAvgTxSpeed(const QString &clientId) {
+        QMutexLocker locker(&mutex);
+        return stats.value(clientId).getAvgTxSpeed();
+    }
+
+    void cleanup(const QSet<QString> &activeClients) {
+        QMutexLocker locker(&mutex);
+        QList<QString> toRemove;
+        for (auto it = stats.begin(); it != stats.end(); ++it) {
+            if (!activeClients.contains(it.key())) {
+                toRemove.append(it.key());
+            }
+        }
+        for (const QString &key : toRemove) {
+            stats.remove(key);
+        }
+    }
+};
+
 /**
  * Класс для асинхронной генерации сертификатов
  */
@@ -117,11 +196,10 @@ class CertificateGenerator : public QObject
 
 public:
     explicit CertificateGenerator(QObject *parent = nullptr);
-    ~CertificateGenerator();
-
     void generateCertificates(const QString &certsDir,
                               const QString &openVPNPath,
                               bool useEasyRSA);
+
 signals:
     void logMessage(const QString &message, const QString &type);
     void finished(bool success);
@@ -162,25 +240,17 @@ public:
     bool serverMode = false;
 
     // Публичные слоты
-    DnsMonitor* getDnsMonitor() const { return dnsMonitor; }
-
-
 public slots:
     void startTor();
     void startOpenVPNServer();
-    void updateClientsTable();
 
     // Методы для доступа к реестру
     const QMap<QString, ClientRecord>& getClientRegistry() const { return clientRegistry; }
     void updateRegistryFromTelegram(const QString &cn, const ClientRecord &record);
 
-    // НОВЫЕ МЕТОДЫ ДЛЯ СТАТИСТИКИ
-    void showStatsReport();
-    void showClientStats(const QString &clientName);
-    void exportStatsToCSV();
-    void checkSuspiciousDomains();
-
-    void updateClientStatsAsync();
+    // Методы для MTProxy
+    void startMTProxy();
+    void stopMTProxy();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -267,6 +337,8 @@ private slots:
 
     // Управление клиентами
     void createClientsTab();
+    void updateClientsTable();
+    void updateClientsTableUI(const QMap<QString, ClientInfo> &newClients, const QDateTime &now);
     void disconnectSelectedClient();
     void disconnectAllClients();
     void showClientDetails();
@@ -283,11 +355,12 @@ private slots:
     void saveClientRegistry();
     void updateRegistryTable();
     void applyRegistryFilter();
-    void syncRegistryTraffic(const QMap<QString, ClientInfo> &newClients,
-                             const QMap<QString, ClientInfo> &oldClients);
     void updateRealtimeDurations();
     void checkMultipleConnections();
     void deleteClientPermanently(const QString &cn);
+
+    // Статистика клиентов
+    void updateClientStats();
 
     // Telegram бот
     void createTelegramTab();
@@ -300,20 +373,14 @@ private slots:
     void addUrlAccess(const UrlAccess &access);
     void updateUrlTable();
 
+    // Диагностика бота
     void diagnoseBotConnection();
 
-    // НОВЫЕ СЛОТЫ ДЛЯ СТАТИСТИКИ
-    void onSuspiciousActivity(const QString &clientName, const QString &domain, const QString &reason);
-    void onStatsUpdated(const QString &clientName, const DnsClientStats &stats);
-    void updateStatsDisplay();
-    void addSuspiciousToList(const QString &client, const QString &domain);
-
-    void onServerStartedHandler();
-    void updateClientMapForDnsMonitor();
-    void verifyDnsMonitorRunning();
-    void logDnsMonitorDiagnostics();
-    void updateClientsTableUI(const QMap<QString, ClientInfo> &newClients, const QDateTime &now);
-    void scheduleClientsUpdate(int delayMs = 2000);
+    // MTProxy
+    void createMTProxyTab();
+    void onMTProxyStarted();
+    void onMTProxyStopped();
+    void onMTProxyLog(const QString &msg, const QString &level);
 
 private:
     // Инициализация
@@ -326,9 +393,6 @@ private:
     void createServerTab();
     void createSettingsTab();
     void createLogsTab();
-
-    // Создание вкладки статистики
-    void setupStatsUI();
 
     // Конфигурация Tor
     void createTorConfig();
@@ -343,7 +407,6 @@ private:
     bool validateServerConfig();
     QString findEasyRSA();
     QString getLocalIP();
-    void updateClientStats();
 
     // Вспомогательные функции
     bool copyPath(const QString &src, const QString &dst);
@@ -353,6 +416,8 @@ private:
     QString resolveClientCertPath(const QString &cn) const;
     QString resolveClientKeyPath(const QString &cn) const;
     QString extractTaKeyFromServerConf() const;
+    QString formatBytes(qint64 bytes) const;
+    QString formatDuration(qint64 seconds) const;
 
     // Управление мостами
     QString normalizeBridgeLine(const QString &bridge);
@@ -405,9 +470,9 @@ private:
     QSpinBox *spinServerPort = nullptr;
     QLineEdit *txtServerNetwork = nullptr;
     QCheckBox *chkRouteThroughTor = nullptr;
-    QCheckBox *chkExternalSocks = nullptr;
-    QCheckBox *chkExternalTrans = nullptr;
-    QCheckBox *chkExternalDns = nullptr;
+    QCheckBox *chkExternalSocks = nullptr;   // Внешний доступ к SOCKS порту
+    QCheckBox *chkExternalTrans = nullptr;   // Внешний TransPort (прозрачный прокси)
+    QCheckBox *chkExternalDns = nullptr;     // Внешний DNSPort
     QSpinBox  *spinTransPort = nullptr;
     QSpinBox  *spinDnsPort = nullptr;
     QPushButton *btnGenerateCerts = nullptr;
@@ -458,21 +523,12 @@ private:
     QLabel *lblOnlineClients = nullptr;
     QTimer *clientsRefreshTimer = nullptr;
 
-    // НОВЫЕ UI ЭЛЕМЕНТЫ ДЛЯ СТАТИСТИКИ
-    QWidget *statsTab = nullptr;              // Новая вкладка статистики
-    QTableWidget *statsTable = nullptr;        // Таблица статистики по клиентам
-    QTextEdit *suspiciousLog = nullptr;        // Лог подозрительной активности
-    QPushButton *btnGenerateReport = nullptr;  // Кнопка генерации отчета
-    QPushButton *btnExportStats = nullptr;     // Кнопка экспорта статистики
-    QComboBox *cmbClientSelect = nullptr;      // Выбор клиента для отчета
-    QLabel *lblTotalRequests = nullptr;        // Общая статистика
-    QLabel *lblSuspiciousCount = nullptr;      // Счетчик подозрительных
-
     // Кэш клиентов
     QMap<QString, ClientInfo> clientsCache;
     qint64 lastClientRefreshMs = 0;
     QMap<QString, ClientRecord> clientRegistry;
     QMap<QString, QStringList> activeIPsPerClient;
+    ClientStatsManager *clientStats = nullptr;
 
     // Мьютекс для потокобезопасного доступа к реестру
     QMutex registryMutex;
@@ -509,10 +565,7 @@ private:
     QTableWidget *urlTable = nullptr;
     QComboBox *urlClientFilter = nullptr;
     QComboBox *urlMethodFilter = nullptr;
-    QComboBox *urlTypeFilter = nullptr;   // Все / Пользовательские / Автоматические
     QLabel *urlStatsLabel = nullptr;
-
-    static bool isAutomaticRequest(const QString &url, const QString &method);
     QList<UrlAccess> urlHistory;
 
     // Системный трей
@@ -527,6 +580,10 @@ private:
     // Telegram бот
     TelegramBotManager *tgBotManager = nullptr;
 
+    // MTProxy
+    MTProxyManager *mtproxyManager = nullptr;
+    QWidget *mtproxyWidget = nullptr;
+
     // Сеть
     QTcpSocket *controlSocket = nullptr;
     QNetworkAccessManager *ipCheckManager = nullptr;
@@ -536,14 +593,6 @@ private:
     QTimer *trafficTimer = nullptr;
     QTimer *clientStatsTimer = nullptr;
     QTimer *realtimeTimer = nullptr;
-
-    // Клиентская статистика
-    ClientStats *clientStats = nullptr;
-    QStringList logBuffer;       // буфер UI-сообщений
-    QStringList fileLogBuffer;    // буфер записи в файл (thread-safe)
-    QMutex logMutex;
-    QTimer *logFlushTimer = nullptr;
-    // дебаунс обновления таблицы клиентов удалён (используем QTimer::singleShot напрямую)
 
     // Настройки
     QSettings *settings = nullptr;
@@ -586,9 +635,9 @@ private:
     static const int DEFAULT_TOR_SOCKS_PORT;
     static const int DEFAULT_TOR_CONTROL_PORT;
     static const int DEFAULT_VPN_SERVER_PORT;
-    static const int MW_MAX_LOG_LINES;
-    static const int MW_BRIDGE_TEST_TIMEOUT;
-    static const int MW_CLIENT_STATS_UPDATE_INTERVAL;
+    static const int MAX_LOG_LINES;
+    static const int BRIDGE_TEST_TIMEOUT;
+    static const int CLIENT_STATS_UPDATE_INTERVAL;
 
     // Состояние расширенное
     QString  logLevel = "all";
@@ -596,11 +645,10 @@ private:
     QString  allLogsFilePath;
     int torCrashCount = 0;
 
-    // Вспомогательные функции форматирования
-    QString formatBytes(qint64 bytes) const;
-    QString formatDuration(qint64 seconds) const;
-    QString formatSpeed(qint64 bps) const;
-
+    // НОВЫЕ ПОЛЯ ДЛЯ ПОТОКОБЕЗОПАСНОГО ЛОГИРОВАНИЯ
+    QStringList logBuffer;
+    QMutex logMutex;
+    QTimer *logFlushTimer = nullptr;
 };
 
 #endif // MAINWINDOW_H

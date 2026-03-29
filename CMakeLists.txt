@@ -27,8 +27,6 @@ set(SOURCES
     dns_monitor.h
     tgbot_manager.cpp
     tgbot_manager.h
-    client_stats.cpp      # НОВЫЙ
-    client_stats.h        # НОВЫЙ
 )
 
 add_executable(TorManager ${SOURCES})

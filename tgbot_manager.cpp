@@ -16,8 +16,7 @@
  */
 
 #include "tgbot_manager.h"
-#include <QNetworkProxy>
-#include "mainwindow.h"
+#include "mainwindow.h"  // Для ClientRecord
 
 #include <QApplication>
 #include <QStandardPaths>
@@ -33,8 +32,6 @@
 #include <QFutureWatcher>
 #include <QtConcurrent/QtConcurrent>
 #include <QPointer>
-#include "dns_monitor.h"  // для DnsClientStats и DnsMonitor
-#include "client_stats.h" // для ClientStats (класс)
 
 // ─── Константы стилей ─────────────────────────────────────────────────────────
 const QString TelegramBotManager::STYLE_RUNNING = "color: #27ae60; font-weight: bold;";
@@ -50,18 +47,6 @@ TelegramBotManager::TelegramBotManager(QSettings *settings, QObject *parent)
 , settings(settings)
 {
     nam = new QNetworkAccessManager(this);
-
-    // Маршрутизируем весь трафик бота через Tor SOCKS5.
-    // Без этого трафик root-процесса обходит transparent proxy iptables
-    // и идёт напрямую — соединение с api.telegram.org сбрасывается.
-    {
-        int socksPort = settings ? settings->value("tor/socksPort", 9050).toInt() : 9050;
-        QNetworkProxy torProxy;
-        torProxy.setType(QNetworkProxy::Socks5Proxy);
-        torProxy.setHostName("127.0.0.1");
-        torProxy.setPort(static_cast<quint16>(socksPort));
-        nam->setProxy(torProxy);
-    }
 
     // Отключаем HTTP/2 глобально — он вызывает "device not open" и обрывы
     // соединения с api.telegram.org. HTTP/1.1 стабильнее для long polling.
@@ -98,43 +83,32 @@ TelegramBotManager::~TelegramBotManager()
 void TelegramBotManager::loadSettings()
 {
     settings->beginGroup("TelegramBot");
-
-    // Пробуем прочитать зашифрованный токен
-    QString encryptedToken = settings->value("token", "").toString();
-
-    if (encryptedToken.isEmpty()) {
-        // Если нет зашифрованного, пробуем старый открытый токен
-        botToken = settings->value("plainToken", "").toString();
-        if (!botToken.isEmpty()) {
-            // Мигрируем на новый формат
-            saveSettings();
-        }
-    } else {
-        // Расшифровываем токен
-        botToken = simpleXorDecrypt(encryptedToken, "TorManagerKey2026");
-
-        // Проверяем что расшифровка удалась (токен должен содержать ':')
-        if (!botToken.contains(':') && botToken.length() < 40) {
-            qWarning() << "Возможно ошибка расшифровки токена, используем как есть";
-            botToken = encryptedToken; // fallback
-        }
-    }
-
+    botToken       = settings->value("token", "").toString();
     serverAddress  = settings->value("serverAddress", "").toString();
     serverPort     = settings->value("serverPort", 1194).toInt();
     serverProto    = settings->value("serverProto", "tcp").toString();
     ovpnOutDir     = settings->value("ovpnOutDir", ovpnOutDir).toString();
     pollTimeoutSec = settings->value("pollTimeout", 25).toInt();
 
-    // certsDir и registryIniPath
-    QString savedCerts = settings->value("certsDir", "").toString();
-    if (!savedCerts.isEmpty()) {
-        certsDir = savedCerts;
+    // certsDir и registryIniPath берём из настроек только если там непустое значение.
+    // Пустое значение означает "не настроено" — оставляем дефолт из конструктора
+    // (правильный путь придёт через setCertsDir() из MainWindow::syncBotWithSettings)
+    {
+        QString savedCerts = settings->value("certsDir", "").toString();
+        if (!savedCerts.isEmpty()) {
+            certsDir = savedCerts;
+        } else {
+            // Удаляем пустую запись чтобы она не мешала в будущем
+            settings->remove("certsDir");
+        }
     }
-
-    QString savedRegistry = settings->value("registryIni", "").toString();
-    if (!savedRegistry.isEmpty()) {
-        registryIniPath = savedRegistry;
+    {
+        QString savedRegistry = settings->value("registryIni", "").toString();
+        if (!savedRegistry.isEmpty()) {
+            registryIniPath = savedRegistry;
+        } else {
+            settings->remove("registryIni");
+        }
     }
 
     QStringList adminStrs = settings->value("adminIds", QStringList()).toStringList();
@@ -150,26 +124,15 @@ void TelegramBotManager::loadSettings()
 void TelegramBotManager::saveSettings()
 {
     settings->beginGroup("TelegramBot");
-
-    // Шифруем токен перед сохранением
-    if (!botToken.isEmpty()) {
-        QString encryptedToken = simpleXorEncrypt(botToken, "TorManagerKey2026");
-        settings->setValue("token", encryptedToken);
-        // Сохраняем также plain token для обратной совместимости
-        settings->setValue("plainToken", botToken);
-    }
-
+    settings->setValue("token",         botToken);
     settings->setValue("serverAddress", serverAddress);
-    settings->setValue("serverPort", serverPort);
-    settings->setValue("serverProto", serverProto);
-    if (!certsDir.isEmpty()) {
-        settings->setValue("certsDir", certsDir);
-    }
-    if (!registryIniPath.isEmpty()) {
-        settings->setValue("registryIni", registryIniPath);
-    }
-    settings->setValue("ovpnOutDir", ovpnOutDir);
-    settings->setValue("pollTimeout", pollTimeoutSec);
+    settings->setValue("serverPort",    serverPort);
+    settings->setValue("serverProto",   serverProto);
+    // Не сохраняем пустые пути — они должны приходить из MainWindow через setCertsDir()
+    if (!certsDir.isEmpty())       settings->setValue("certsDir",    certsDir);
+    if (!registryIniPath.isEmpty()) settings->setValue("registryIni", registryIniPath);
+    settings->setValue("ovpnOutDir",    ovpnOutDir);
+    settings->setValue("pollTimeout",   pollTimeoutSec);
 
     QStringList adminStrs;
     for (qint64 id : adminIds) adminStrs << QString::number(id);
@@ -685,13 +648,13 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
         return;
     }
 
-    // Проверяем что certsDir установлен
+    // Проверяем что certsDir установлен — если нет, сообщаем об ошибке конфигурации
     if (certsDir.isEmpty()) {
         addLog("❌ certsDir не настроен! Путь к сертификатам не передан боту.", "error");
         sendMessage(chatId,
-                    "❌ <b>Ошибка конфигурации бота</b>\n\n"
-                    "Директория сертификатов не настроена.\n"
-                    "Перезапустите приложение — пути синхронизируются автоматически.");
+            "❌ <b>Ошибка конфигурации бота</b>\n\n"
+            "Директория сертификатов не настроена.\n"
+            "Перезапустите приложение — пути синхронизируются автоматически.");
         return;
     }
 
@@ -714,23 +677,28 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
 
     auto *watcher = new QFutureWatcher<CertGenerationResult>(this);
 
-    // Таймаут с QPointer для защиты от use-after-free
+    // Таймаут: используем QPointer чтобы не обращаться к уже удалённому watcher
+    // (watcher может быть удалён через deleteLater до срабатывания таймера)
     QPointer<QFutureWatcher<CertGenerationResult>> watcherPtr(watcher);
     QTimer::singleShot(60000, this, [this, watcherPtr, chatId, editMsgId, cnCopy]() {
-        if (watcherPtr.isNull() || !watcherPtr.data()) {
-            return;
-        }
+        if (!watcherPtr) return;  // watcher уже удалён — ничего не делаем
         if (!watcherPtr->isFinished()) {
             watcherPtr->cancel();
-            if (pendingCertChats.contains(chatId)) {
-                pendingCertChats.remove(chatId);
-            }
-            QString errorMsg = "❌ <b>Таймаут генерации сертификата</b>\n\n...";
+            pendingCertChats.remove(chatId);
+
+            QString errorMsg = "❌ <b>Таймаут генерации сертификата</b>\n\n"
+            "Процесс занял больше 60 секунд и был прерван.\n"
+            "Проверьте:\n"
+            "• Наличие openssl в системе\n"
+            "• Права на запись в директорию сертификатов\n"
+            "• Целостность CA сертификатов";
+
             if (editMsgId > 0) {
                 editMessage(chatId, editMsgId, errorMsg);
             } else {
                 sendMessage(chatId, errorMsg);
             }
+
             addLog("❌ Таймаут генерации сертификата для " + cnCopy, "error");
             watcherPtr->deleteLater();
         }
@@ -739,11 +707,6 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
     connect(watcher, &QFutureWatcher<CertGenerationResult>::finished,
             this, [=]() mutable
             {
-                // Защита: watcher может быть уже удален
-                if (!watcher) {
-                    return;
-                }
-
                 watcher->deleteLater();
                 pendingCertChats.remove(chatId);
 
@@ -758,7 +721,7 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
                             "❌ <b>OpenSSL не найден</b>\n\n"
                             "Для работы бота необходим OpenSSL.\n\n"
                             "📦 <b>Установка:</b>\n"
-                            "```bash\nsudo apt update\nsudo apt install openssl\n```\n\n"
+                            "``<code>bash\nsudo apt update\nsudo apt install openssl\n</code>``\n\n"
                             "После установки перезапустите бота.");
                     } else if (result.step == "check_ca_files") {
                         errorMsg = QString(
@@ -774,12 +737,12 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
                             "❌ <b>Нет прав на запись</b>\n\n"
                             "%1\n\n"
                             "🔧 <b>Решение:</b>\n"
-                            "```bash\nsudo chown -R $(whoami) %2\n```")
+                            "``<code>bash\nsudo chown -R $(whoami) %2\n</code>``")
                         .arg(result.errorDetails, certsDirCopy);
                     } else {
                         errorMsg = QString(
                             "❌ <b>Ошибка создания сертификата</b>\n\n"
-                            "```\n%1\n```\n\n"
+                            "``<code>\n%1\n</code>``\n\n"
                             "📋 <b>Детали:</b>\n"
                             "• Шаг: %2\n"
                             "• OpenSSL stderr: %3")
@@ -796,7 +759,7 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
                     return;
                 }
 
-                // Ищем ta.key
+                // Ищем ta.key в нескольких возможных местах
                 QStringList taKeySearchPaths = {
                     certsDirCopy + "/ta.key",
                     certsDirCopy + "/easy-rsa/pki/ta.key",
@@ -808,13 +771,13 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
                 }
 
                 if (foundTaKey.isEmpty()) {
-                    addLog("⚠️ ta.key не найден, генерирую...", "warning");
+                    addLog("⚠️ ta.key не найден ни в одном из путей, генерирую...", "warning");
 
                     QProcess genTa;
                     genTa.start("openvpn", {"--genkey", "--secret", certsDirCopy + "/ta.key"});
                     if (!genTa.waitForFinished(10000) || genTa.exitCode() != 0) {
                         addLog("❌ Не удалось сгенерировать ta.key", "error");
-                        sendMessage(chatId, "❌ Ошибка: не удалось создать ключ шифрования.");
+                        sendMessage(chatId, "❌ Ошибка: не удалось создать ключ шифрования. Обратитесь к администратору.");
                         return;
                     }
                     addLog("✅ ta.key сгенерирован в " + certsDirCopy, "success");
@@ -822,7 +785,7 @@ void TelegramBotManager::generateClientCertAsync(const QString &cn,
                     addLog("✅ ta.key найден: " + foundTaKey, "info");
                 }
 
-                // Успешная генерация
+                // Успешная генерация - продолжаем
                 QString ovpnContent = buildOvpnConfig(cnCopy, hasExpiry ? expiry : QDate());
                 if (ovpnContent.isEmpty()) {
                     sendMessage(chatId, QString("❌ Ошибка создания .ovpn для <code>%1</code>.").arg(cnCopy));
@@ -1128,26 +1091,6 @@ void TelegramBotManager::handleNetworkError(QNetworkReply *reply, const QString 
     }
 }
 
-// Вспомогательный метод для безопасного получения MainWindow
-MainWindow* TelegramBotManager::getMainWindow() const
-{
-    // Пробуем через parent()
-    QObject *parentObj = parent();
-    if (parentObj) {
-        MainWindow *mw = qobject_cast<MainWindow*>(parentObj);
-        if (mw) return mw;
-    }
-
-    // Ищем среди топ-уровневых виджетов
-    QWidgetList topWidgets = QApplication::topLevelWidgets();
-    for (QWidget *widget : topWidgets) {
-        MainWindow *mw = qobject_cast<MainWindow*>(widget);
-        if (mw) return mw;
-    }
-
-    return nullptr;
-}
-
 void TelegramBotManager::retryFailedRequest(QNetworkRequest request, QByteArray payload,
                                             int retryCount, qint64 chatId, const QString &context)
 {
@@ -1384,7 +1327,6 @@ void TelegramBotManager::processUpdate(const QJsonObject &update)
     }
 }
 
-// В методе TelegramBotManager::processMessage добавьте новые команды:
 void TelegramBotManager::processMessage(const TgMessage &msg)
 {
     QString text = msg.text.trimmed();
@@ -1392,48 +1334,31 @@ void TelegramBotManager::processMessage(const TgMessage &msg)
     addLog(QString("📩 Команда от %1 (ID: %2): %3")
     .arg(htmlEscape(msg.firstName)).arg(msg.userId).arg(msg.text), "info");
 
-    // Проверяем наличие активного диалога под мьютексом
-    {
-        QMutexLocker locker(&conversationsMutex);
-        if (conversations.contains(msg.chatId)) {
-            ConvContext &ctx = conversations[msg.chatId];
-            if (ctx.state != ConvState::None) {
-                // Разблокируем для длительных операций
-                locker.unlock();
-
-                if (text.startsWith("/")) {
-                    handleCancel(msg);
-                    QString cmd = text.split(' ').first().toLower();
-                    if (cmd.contains('@')) cmd = cmd.split('@').first();
-                    if (cmd == "/newuser") {
-                        handleNewUser(msg);
-                    }
-                    return;
-                }
-
-                // Снова блокируем для доступа к ctx
-                locker.relock();
-                // Получаем свежую ссылку после relock
-                if (conversations.contains(msg.chatId)) {
-                    ConvContext &ctxRelock = conversations[msg.chatId];
-                    handleConvMessage(msg, ctxRelock);
-                }
+    if (conversations.contains(msg.chatId)) {
+        ConvContext &ctx = conversations[msg.chatId];
+        if (ctx.state != ConvState::None) {
+            if (text.startsWith("/")) {
+                handleCancel(msg);
+                QString cmd = text.split(' ').first().toLower();
+                if (cmd.contains('@')) cmd = cmd.split('@').first();
+                if (cmd == "/newuser") handleNewUser(msg);
                 return;
             }
+            handleConvMessage(msg, ctx);
+            return;
         }
     }
 
-    // Если нет диалога, обрабатываем команду
     QString cmd = text.split(' ').first().toLower();
     if (cmd.contains('@')) cmd = cmd.split('@').first();
 
     if (cmd == "/start")       handleStart(msg);
     else if (cmd == "/help")   handleHelp(msg);
     else if (cmd == "/instruction") handleInstruction(msg);
-    else if (cmd == "/status")      { if (isAdmin(msg.userId)) handleStatus(msg); else handleStart(msg); }
-    else if (cmd == "/list")        { if (isAdmin(msg.userId)) handleList(msg); else handleStart(msg); }
-    else if (cmd == "/newuser")     { if (isAdmin(msg.userId)) handleNewUser(msg); else handleStart(msg); }
-    else if (cmd.startsWith("/revoke"))    { if (isAdmin(msg.userId)) handleRevoke(msg); else handleStart(msg); }
+    else if (cmd == "/status")      { if (isAdmin(msg.userId)) handleStatus(msg);    else handleStart(msg); }
+    else if (cmd == "/list")        { if (isAdmin(msg.userId)) handleList(msg);      else handleStart(msg); }
+    else if (cmd == "/newuser")     { if (isAdmin(msg.userId)) handleNewUser(msg);   else handleStart(msg); }
+    else if (cmd.startsWith("/revoke"))    { if (isAdmin(msg.userId)) handleRevoke(msg);    else handleStart(msg); }
     else if (cmd.startsWith("/getconfig")) { if (isAdmin(msg.userId)) handleGetConfig(msg); else handleStart(msg); }
     else if (cmd == "/cancel")      handleCancel(msg);
     else {
@@ -1449,16 +1374,11 @@ void TelegramBotManager::processCallback(const TgMessage &msg)
 {
     answerCallbackQuery(QString::number(msg.messageId));
 
-    // Проверяем наличие активного диалога под мьютексом
-    {
-        QMutexLocker locker(&conversationsMutex);
-        if (conversations.contains(msg.chatId)) {
-            ConvContext &ctx = conversations[msg.chatId];
-            if (ctx.state != ConvState::None) {
-                locker.unlock();  // Разблокируем для handleConvCallback
-                handleConvCallback(msg, ctx);
-                return;
-            }
+    if (conversations.contains(msg.chatId)) {
+        ConvContext &ctx = conversations[msg.chatId];
+        if (ctx.state != ConvState::None) {
+            handleConvCallback(msg, ctx);
+            return;
         }
     }
 }
@@ -1514,17 +1434,12 @@ void TelegramBotManager::handleStart(const TgMessage &msg)
         return;
     }
 
-    ConvContext ctx;
+    ConvContext &ctx = conversations[msg.chatId];
     ctx.state = ConvState::WaitingConsent;
     ctx.chatId = msg.chatId;
     ctx.pendingFirstName = msg.firstName;
     ctx.pendingLastName  = msg.lastName;
     ctx.pendingUsername  = msg.username;
-
-    {
-        QMutexLocker locker(&conversationsMutex);
-        conversations[msg.chatId] = ctx;
-    }
 
     QString displayName = msg.firstName;
     if (!msg.lastName.isEmpty()) displayName += " " + msg.lastName;
@@ -1639,8 +1554,7 @@ void TelegramBotManager::sendExistingConfig(const TgMessage &msg, const QString 
     QString tmpPath = ovpnOutDir + "/" + cn + ".ovpn";
     QFile f(tmpPath);
     if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        f.write(ovpnContent.toUtf8());
-        f.close();
+        f.write(ovpnContent.toUtf8()); f.close();
         sendMessage(msg.chatId, QString("📎 Отправляю файл конфига <code>%1.ovpn</code>:").arg(cn));
         sendDocument(msg.chatId, tmpPath, "");
     }
@@ -1651,7 +1565,7 @@ void TelegramBotManager::handleInstruction(const TgMessage &msg)
     const QString instr =
     "📋 <b>Инструкция по подключению к VPN</b>\n\n"
     "<b>Шаг 1 — Скачайте OpenVPN клиент</b>\n\n"
-    "🤖 <b>Android:</b> [OpenVPN для Android](https://play.google.com/store/apps/details?id=de.blinkt.openvpn)\n"
+    "🤖 <b>Android:</b> [OpenVPN для Android](https://play.google.com/store/apps/details?id=net.openvpn.openvpn)\n"
     "🍎 <b>iOS:</b> [OpenVPN Connect](https://apps.apple.com/app/openvpn-connect/id590379981)\n"
     "🪟 <b>Windows:</b> [OpenVPN GUI](https://openvpn.net/community-downloads/)\n"
     "🐧 <b>Linux:</b> <code>sudo apt install openvpn</code>\n\n"
@@ -1790,12 +1704,7 @@ void TelegramBotManager::handleNewUser(const TgMessage &msg)
     ctx.hasExpiry    = true;
     ctx.pendingExpiry = expiry;
     ctx.state        = ConvState::WaitingConfirm;
-
-    // Сохраняем контекст под мьютексом
-    {
-        QMutexLocker locker(&conversationsMutex);
-        conversations[msg.chatId] = ctx;
-    }
+    conversations[msg.chatId] = ctx;
 
     QJsonArray kb = makeInlineKeyboard({{
         {"✅ Создать и отправить .ovpn", "confirm_yes"},
@@ -1839,12 +1748,7 @@ void TelegramBotManager::handleRevoke(const TgMessage &msg)
     ctx.state       = ConvState::WaitingRevokeConfirm;
     ctx.chatId      = msg.chatId;
     ctx.revokeTarget= cn;
-
-    // Сохраняем контекст под мьютексом
-    {
-        QMutexLocker locker(&conversationsMutex);
-        conversations[msg.chatId] = ctx;
-    }
+    conversations[msg.chatId] = ctx;
 
     QJsonArray kb = makeInlineKeyboard({{
         {"✅ Да, отозвать", "revoke_yes"},
@@ -1908,11 +1812,7 @@ void TelegramBotManager::handleGetConfig(const TgMessage &msg)
 
 void TelegramBotManager::handleCancel(const TgMessage &msg)
 {
-    // Удаляем контекст под мьютексом
-    {
-        QMutexLocker locker(&conversationsMutex);
-        conversations.remove(msg.chatId);
-    }
+    conversations.remove(msg.chatId);
     sendMessage(msg.chatId, "❌ Отменено.");
 }
 
@@ -1942,17 +1842,11 @@ void TelegramBotManager::convConsent(const TgMessage &msg, ConvContext &ctx)
 {
     if (msg.callbackData == "consent_yes") {
         consentGiven.insert(msg.userId);
-        {
-            QMutexLocker locker(&conversationsMutex);
-            conversations.remove(msg.chatId);
-        }
+        conversations.remove(msg.chatId);
         addLog(QString("✅ Согласие принято: %1 (ID: %2)").arg(ctx.pendingFirstName).arg(msg.userId), "info");
         handleNewUserForNonAdmin(msg);
     } else {
-        {
-            QMutexLocker locker(&conversationsMutex);
-            conversations.remove(msg.chatId);
-        }
+        conversations.remove(msg.chatId);
         sendMessage(msg.chatId,
                     "❌ Вы отказались от предоставления данных.\n\n"
                     "Без согласия мы не можем создать ваш VPN-профиль.\n"
@@ -1979,11 +1873,8 @@ void TelegramBotManager::convGotName(const TgMessage &msg, ConvContext &ctx)
         return;
     }
 
-    {
-        QMutexLocker locker(&conversationsMutex);
-        ctx.pendingCN = safe;
-        ctx.state = ConvState::WaitingExpiryChoice;
-    }
+    ctx.pendingCN = safe;
+    ctx.state = ConvState::WaitingExpiryChoice;
 
     QJsonArray kb = makeInlineKeyboard({{
         {"📅 Установить срок",  "expiry_yes"},
@@ -1999,28 +1890,19 @@ void TelegramBotManager::convGotName(const TgMessage &msg, ConvContext &ctx)
 void TelegramBotManager::convExpiryChoice(const TgMessage &msg, ConvContext &ctx)
 {
     if (msg.callbackData == "expiry_cancel") {
-        {
-            QMutexLocker locker(&conversationsMutex);
-            conversations.remove(msg.chatId);
-        }
+        conversations.remove(msg.chatId);
         editMessage(msg.chatId, msg.lastBotMessageId, "❌ Отменено.");
         return;
     }
 
     if (msg.callbackData == "expiry_no") {
-        {
-            QMutexLocker locker(&conversationsMutex);
-            ctx.hasExpiry = false;
-            ctx.pendingExpiry = QDate();
-        }
+        ctx.hasExpiry = false;
+        ctx.pendingExpiry = QDate();
         convDoConfirm(msg, ctx);
         return;
     }
 
-    {
-        QMutexLocker locker(&conversationsMutex);
-        ctx.state = ConvState::WaitingExpiryDate;
-    }
+    ctx.state = ConvState::WaitingExpiryDate;
     editMessage(msg.chatId, msg.lastBotMessageId,
                 "📅 Введите дату истечения доступа в формате <b>ДД.ММ.ГГГГ</b>:\n"
                 "_Например: 31.12.2025_\n\nОтмена: /cancel");
@@ -2039,20 +1921,14 @@ void TelegramBotManager::convGotExpiryDate(const TgMessage &msg, ConvContext &ct
         return;
     }
 
-    {
-        QMutexLocker locker(&conversationsMutex);
-        ctx.hasExpiry = true;
-        ctx.pendingExpiry = d;
-    }
+    ctx.hasExpiry    = true;
+    ctx.pendingExpiry = d;
     convDoConfirm(msg, ctx);
 }
 
 void TelegramBotManager::convDoConfirm(const TgMessage &msg, ConvContext &ctx)
 {
-    {
-        QMutexLocker locker(&conversationsMutex);
-        ctx.state = ConvState::WaitingConfirm;
-    }
+    ctx.state = ConvState::WaitingConfirm;
 
     QString expiryStr = ctx.hasExpiry
     ? ctx.pendingExpiry.toString("dd.MM.yyyy")
@@ -2080,10 +1956,7 @@ void TelegramBotManager::convDoConfirm(const TgMessage &msg, ConvContext &ctx)
 void TelegramBotManager::convConfirm(const TgMessage &msg, ConvContext &ctx)
 {
     if (msg.callbackData == "confirm_no") {
-        {
-            QMutexLocker locker(&conversationsMutex);
-            conversations.remove(msg.chatId);
-        }
+        conversations.remove(msg.chatId);
         editMessage(msg.chatId, msg.lastBotMessageId, "❌ Отменено.");
         return;
     }
@@ -2092,11 +1965,7 @@ void TelegramBotManager::convConfirm(const TgMessage &msg, ConvContext &ctx)
     QDate   expiry = ctx.pendingExpiry;
     bool    hasExp = ctx.hasExpiry;
     int     editId = msg.lastBotMessageId;
-
-    {
-        QMutexLocker locker(&conversationsMutex);
-        conversations.remove(msg.chatId);
-    }
+    conversations.remove(msg.chatId);
 
     editMessage(msg.chatId, editId,
                 QString("⏳ Генерирую сертификат для <code>%1</code>...").arg(cn));
@@ -2109,10 +1978,7 @@ void TelegramBotManager::convConfirm(const TgMessage &msg, ConvContext &ctx)
 void TelegramBotManager::convRevokeConfirm(const TgMessage &msg, ConvContext &ctx)
 {
     QString cn = ctx.revokeTarget;
-    {
-        QMutexLocker locker(&conversationsMutex);
-        conversations.remove(msg.chatId);
-    }
+    conversations.remove(msg.chatId);
 
     if (msg.callbackData == "revoke_no") {
         editMessage(msg.chatId, msg.lastBotMessageId, "❌ Отменено.");
@@ -2550,22 +2416,8 @@ void TelegramBotManager::onBtnTestToken()
     QNetworkRequest req = createTelegramRequest(TG_API_BASE + token + "/getMe", 10000);
     auto *reply = nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply]{
-        QNetworkReply::NetworkError netErr = reply->error();
-        QString netErrStr = reply->errorString();
         QByteArray data = reply->readAll();
         reply->deleteLater();
-
-        // Сначала проверяем сетевую ошибку (прокси, таймаут, SSL и т.д.)
-        if (netErr != QNetworkReply::NoError) {
-            QString msg = QString("⚠️ Ошибка сети при проверке токена: %1").arg(netErrStr);
-            addLog(msg, "error");
-            QMessageBox::critical(tabWidget, "Ошибка сети",
-                QString("Не удалось связаться с Telegram API.\n\n"
-                        "Ошибка: %1\n\n"
-                        "Убедитесь, что Tor запущен и SOCKS-порт доступен.").arg(netErrStr));
-            return;
-        }
-
         QJsonDocument doc = QJsonDocument::fromJson(data);
         QJsonObject root = doc.object();
         if (root["ok"].toBool()) {
@@ -2579,7 +2431,6 @@ void TelegramBotManager::onBtnTestToken()
                                      QString("Токен действителен!\nБот: %1 (@%2)").arg(name, username));
         } else {
             QString err = root["description"].toString();
-            if (err.isEmpty()) err = QString::fromUtf8(data.left(200));
             addLog("❌ Токен недействителен: " + err, "error");
             QMessageBox::critical(tabWidget, "Ошибка",
                                   "Токен недействителен:\n" + err);
@@ -2650,24 +2501,6 @@ void TelegramBotManager::onTokenVisibilityToggle()
     bool hidden = (edtToken->echoMode() == QLineEdit::Password);
     edtToken->setEchoMode(hidden ? QLineEdit::Normal : QLineEdit::Password);
     if (btnToggleToken) btnToggleToken->setText(hidden ? "🙈" : "👁");
-}
-
-void TelegramBotManager::refreshAdminsList()
-{
-    if (!lstAdmins) {
-        qWarning() << "refreshAdminsList: lstAdmins is null";
-        return;
-    }
-
-    lstAdmins->clear();
-    for (qint64 id : adminIds) {
-        lstAdmins->addItem(QString("👤 Admin ID: %1").arg(id));
-    }
-
-    // Если список пуст, показываем подсказку
-    if (adminIds.isEmpty()) {
-        lstAdmins->addItem("❓ Нет администраторов");
-    }
 }
 
 void TelegramBotManager::onPollTimeout()
@@ -2817,349 +2650,11 @@ QJsonArray TelegramBotManager::makeInlineKeyboard(
         emit clientsChanged();
     }
 
-    QString TelegramBotManager::simpleXorEncrypt(const QString &input, const QString &key)
+    void TelegramBotManager::refreshAdminsList()
     {
-        if (input.isEmpty() || key.isEmpty()) {
-            qWarning() << "simpleXorEncrypt: пустой вход или ключ";
-            return input;
+        if (!lstAdmins) return;
+        lstAdmins->clear();
+        for (qint64 id : adminIds) {
+            lstAdmins->addItem(QString("👤 Admin ID: %1").arg(id));
         }
-
-        QByteArray inputData = input.toUtf8();
-        QByteArray keyData = key.toUtf8();
-        QByteArray result;
-        result.reserve(inputData.size());
-
-        for (int i = 0; i < inputData.size(); ++i) {
-            result.append(inputData[i] ^ keyData[i % keyData.size()]);
-        }
-
-        // Возвращаем в base64 для безопасного хранения
-        return QString::fromLatin1(result.toBase64());
-    }
-
-    QString TelegramBotManager::simpleXorDecrypt(const QString &input, const QString &key)
-    {
-        if (input.isEmpty() || key.isEmpty()) {
-            qWarning() << "simpleXorDecrypt: пустой вход или ключ";
-            return input;
-        }
-
-        QByteArray inputData = QByteArray::fromBase64(input.toLatin1());
-        if (inputData.isEmpty()) {
-            qWarning() << "simpleXorDecrypt: не удалось декодировать base64";
-            return input; // Возвращаем как есть, возможно это не зашифрованный токен
-        }
-
-        QByteArray keyData = key.toUtf8();
-        QByteArray result;
-        result.reserve(inputData.size());
-
-        for (int i = 0; i < inputData.size(); ++i) {
-            result.append(inputData[i] ^ keyData[i % keyData.size()]);
-        }
-
-        return QString::fromUtf8(result);
-    }
-
-    //Статистика DNS запросов
-    void TelegramBotManager::handleStats(const TgMessage &msg)
-    {
-        if (!isAdmin(msg.userId)) {
-            sendMessage(msg.chatId, "⛔ Нет доступа.");
-            return;
-        }
-
-        // Безопасно получаем указатель на MainWindow
-        MainWindow *mainWin = getMainWindow();
-
-        // Проверяем доступность MainWindow
-        if (!mainWin) {
-            addLog("❌ Не удалось получить доступ к MainWindow", "error");
-            sendMessage(msg.chatId, "❌ Внутренняя ошибка сервера.");
-            return;
-        }
-
-        // Получаем DNS монитор через публичный метод
-        DnsMonitor *dnsMonitor = mainWin->getDnsMonitor();
-        if (!dnsMonitor) {
-            addLog("❌ DNS монитор не инициализирован в MainWindow", "error");
-            sendMessage(msg.chatId, "❌ DNS монитор не доступен.");
-            return;
-        }
-
-        // Получаем статистику
-        auto stats = dnsMonitor->getClientStats();
-
-        // Формируем ответ
-        QString response = "📊 <b>Статистика DNS запросов</b>\n\n";
-
-        if (stats.isEmpty()) {
-            response += "Нет данных.";
-        } else {
-            qint64 totalRequests = 0;
-            qint64 totalSuspicious = 0;
-
-            // Сортируем клиентов по имени
-            QStringList clientNames = stats.keys();
-            std::sort(clientNames.begin(), clientNames.end());
-
-            for (const QString &clientName : clientNames) {
-                const DnsClientStats &s = stats[clientName];
-                totalRequests += s.totalRequests;
-                totalSuspicious += s.suspiciousRequests;
-
-                response += QString("👤 <b>%1</b>\n").arg(htmlEscape(s.clientName));
-                response += QString("   📊 Всего: %1\n").arg(s.totalRequests);
-                response += QString("   📡 DNS: %1 | HTTP: %2 | HTTPS: %3\n")
-                .arg(s.dnsRequests)
-                .arg(s.httpRequests)
-                .arg(s.httpsRequests);
-
-                if (s.suspiciousRequests > 0) {
-                    response += QString("   ⚠️ <b>Подозрительных: %1</b>\n")
-                    .arg(s.suspiciousRequests);
-                }
-
-                // Топ-3 категории
-                if (!s.categoryCount.isEmpty()) {
-                    response += "   📁 Категории: ";
-
-                    // Сортируем категории по количеству запросов
-                    QList<QPair<qint64, QString>> sortedCategories;
-                    for (auto catIt = s.categoryCount.begin(); catIt != s.categoryCount.end(); ++catIt) {
-                        sortedCategories.append({catIt.value(), catIt.key()});
-                    }
-                    std::sort(sortedCategories.begin(), sortedCategories.end(),
-                              [](const auto &a, const auto &b) { return a.first > b.first; });
-
-                    int catCount = 0;
-                    for (const auto &item : sortedCategories) {
-                        if (++catCount > 3) break;
-                        response += QString("%1(%2) ").arg(item.second).arg(item.first);
-                    }
-                }
-
-                // Топ-3 домена
-                if (!s.topDomains.isEmpty()) {
-                    response += "\n   🔝 Топ: ";
-
-                    QList<QPair<qint64, QString>> sortedDomains;
-                    for (auto domIt = s.topDomains.begin(); domIt != s.topDomains.end(); ++domIt) {
-                        sortedDomains.append({domIt.value(), domIt.key()});
-                    }
-                    std::sort(sortedDomains.begin(), sortedDomains.end(),
-                              [](const auto &a, const auto &b) { return a.first > b.first; });
-
-                    int domCount = 0;
-                    for (const auto &item : sortedDomains) {
-                        if (++domCount > 3) break;
-                        response += QString("%1 ").arg(item.second);
-                    }
-                }
-
-                response += "\n\n";
-            }
-
-            response += QString("━━━━━━━━━━━━━━━━━━━━\n");
-            response += QString("📊 <b>ИТОГО:</b> %1 запросов\n").arg(totalRequests);
-            response += QString("⚠️ <b>Подозрительных:</b> %1\n").arg(totalSuspicious);
-
-            // Добавляем информацию о времени
-            response += QString("\n⏱ Обновлено: %1")
-            .arg(QDateTime::currentDateTime().toString("dd.MM.yyyy HH:mm:ss"));
-        }
-
-        // Отправляем ответ (с разбивкой если слишком длинный)
-        if (response.length() > 4000) {
-            // Разбиваем на части
-            QStringList parts;
-            QString currentPart;
-            QStringList lines = response.split('\n');
-
-            for (const QString &line : lines) {
-                if (currentPart.length() + line.length() > 3500) {
-                    parts.append(currentPart);
-                    currentPart.clear();
-                }
-                currentPart += line + "\n";
-            }
-            if (!currentPart.isEmpty()) {
-                parts.append(currentPart);
-            }
-
-            // Отправляем по частям
-            for (int i = 0; i < parts.size(); ++i) {
-                QString partMsg = parts[i];
-                if (i == 0) {
-                    // Первая часть уже имеет заголовок
-                    sendMessage(msg.chatId, partMsg);
-                } else {
-                    // Добавляем индикатор продолжения
-                    partMsg = QString("📊 <b>Продолжение (%1/%2)</b>\n\n%3")
-                    .arg(i + 1).arg(parts.size()).arg(partMsg);
-                    sendMessage(msg.chatId, partMsg);
-                }
-            }
-        } else {
-            sendMessage(msg.chatId, response);
-        }
-
-        addLog(QString("📊 Статистика отправлена admin %1").arg(msg.userId), "info");
-    }
-
-    // Список подозрительных доменов
-    void TelegramBotManager::handleSuspicious(const TgMessage &msg)
-    {
-        if (!isAdmin(msg.userId)) {
-            sendMessage(msg.chatId, "⛔ Нет доступа.");
-            return;
-        }
-
-        // Безопасно получаем указатель на MainWindow
-        MainWindow *mainWin = getMainWindow();
-
-        if (!mainWin) {
-            addLog("❌ Не удалось получить доступ к MainWindow", "error");
-            sendMessage(msg.chatId, "❌ Внутренняя ошибка сервера.");
-            return;
-        }
-
-        // Получаем DNS монитор через публичный метод
-        DnsMonitor *dnsMonitor = mainWin->getDnsMonitor();
-        if (!dnsMonitor) {
-            addLog("❌ DNS монитор не инициализирован в MainWindow", "error");
-            sendMessage(msg.chatId, "❌ DNS монитор не доступен.");
-            return;
-        }
-
-        auto suspicious = dnsMonitor->getSuspiciousDomains();
-
-        QString response = "🚨 <b>Список подозрительных доменов</b>\n\n";
-
-        if (suspicious.isEmpty()) {
-            response += "✅ Список пуст — подозрительных доменов не обнаружено.";
-        } else {
-            // Сортируем домены
-            QStringList sorted = suspicious;
-            std::sort(sorted.begin(), sorted.end());
-
-            for (const QString &domain : sorted) {
-                response += "• <code>" + domain + "</code>\n";
-            }
-            response += QString("\n📊 Всего: %1 доменов").arg(sorted.size());
-        }
-
-        sendMessage(msg.chatId, response);
-        addLog(QString("🚨 Список подозрительных доменов отправлен admin %1").arg(msg.userId), "info");
-    }
-
-    //Топ доменов по клиентам
-    void TelegramBotManager::handleTopDomains(const TgMessage &msg)
-    {
-        if (!isAdmin(msg.userId)) {
-            sendMessage(msg.chatId, "⛔ Нет доступа.");
-            return;
-        }
-
-        // Разбираем аргументы: /top [клиент] [количество]
-        QStringList parts = msg.text.split(' ', Qt::SkipEmptyParts);
-        QString targetClient;
-        int limit = 10;
-
-        if (parts.size() >= 2) {
-            targetClient = parts[1];
-        }
-        if (parts.size() >= 3) {
-            bool ok;
-            int l = parts[2].toInt(&ok);
-            if (ok && l > 0 && l <= 50) limit = l;
-        }
-
-        MainWindow *mainWin = getMainWindow();
-        if (!mainWin) {
-            addLog("❌ Не удалось получить доступ к MainWindow", "error");
-            sendMessage(msg.chatId, "❌ Внутренняя ошибка сервера.");
-            return;
-        }
-
-        // Получаем DNS монитор через публичный метод
-        DnsMonitor *dnsMonitor = mainWin->getDnsMonitor();
-        if (!dnsMonitor) {
-            addLog("❌ DNS монитор не инициализирован в MainWindow", "error");
-            sendMessage(msg.chatId, "❌ DNS монитор не доступен.");
-            return;
-        }
-
-        auto stats = dnsMonitor->getClientStats();
-
-        QString response;
-
-        if (!targetClient.isEmpty() && stats.contains(targetClient)) {
-            // Топ для конкретного клиента
-            const DnsClientStats &s = stats[targetClient];
-            response = QString("📈 <b>Топ-%1 доменов для %2</b>\n\n")
-            .arg(limit).arg(htmlEscape(targetClient));
-
-            QList<QPair<qint64, QString>> sorted;
-            for (auto it = s.topDomains.begin(); it != s.topDomains.end(); ++it) {
-                sorted.append({it.value(), it.key()});
-            }
-            std::sort(sorted.begin(), sorted.end(),
-                      [](const auto &a, const auto &b) { return a.first > b.first; });
-
-            int count = 0;
-            for (const auto &item : sorted) {
-                if (++count > limit) break;
-                QString domain = item.second;
-                bool isSuspicious = dnsMonitor->isSuspiciousDomain(domain);
-                response += QString("%1. %2 %3\n")
-                .arg(count, 2)
-                .arg(domain)
-                .arg(isSuspicious ? "⚠️" : "");
-            }
-        } else {
-            // Общий топ по всем клиентам
-            QMap<QString, qint64> globalTop;
-            for (auto it = stats.begin(); it != stats.end(); ++it) {
-                const DnsClientStats &s = it.value();
-                for (auto domIt = s.topDomains.begin(); domIt != s.topDomains.end(); ++domIt) {
-                    globalTop[domIt.key()] += domIt.value();
-                }
-            }
-
-            QList<QPair<qint64, QString>> sorted;
-            for (auto it = globalTop.begin(); it != globalTop.end(); ++it) {
-                sorted.append({it.value(), it.key()});
-            }
-            std::sort(sorted.begin(), sorted.end(),
-                      [](const auto &a, const auto &b) { return a.first > b.first; });
-
-            response = QString("📈 <b>Топ-%1 доменов (все клиенты)</b>\n\n")
-            .arg(limit);
-
-            int count = 0;
-            for (const auto &item : sorted) {
-                if (++count > limit) break;
-                QString domain = item.second;
-                bool isSuspicious = dnsMonitor->isSuspiciousDomain(domain);
-
-                // Собираем, какие клиенты посещали этот домен
-                QStringList clients;
-                for (auto it = stats.begin(); it != stats.end(); ++it) {
-                    if (it.value().topDomains.contains(domain)) {
-                        clients.append(it.value().clientName);
-                    }
-                }
-
-                response += QString("%1. <code>%2</code> %3\n   👥 %4 | %5 запросов\n")
-                .arg(count, 2)
-                .arg(domain)
-                .arg(isSuspicious ? "⚠️" : "")
-                .arg(clients.join(", "))
-                .arg(item.first);
-            }
-        }
-
-        sendMessage(msg.chatId, response);
-        addLog(QString("📈 Топ доменов отправлен admin %1").arg(msg.userId), "info");
     }

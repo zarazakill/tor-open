@@ -23,7 +23,6 @@
 #include <QFutureWatcher>
 #include <QtConcurrent/QtConcurrent>
 #include <QMutex>
-#include <QPointer>
 
 // ─── UI виджеты ──────────────────────────────────────────────────────────────
 #include <QVBoxLayout>
@@ -52,9 +51,6 @@
 #include <QProgressBar>
 #include <QListWidget>
 #include <QFrame>
-
-// ─── Предварительное объявление ─────────────────────────────────────────────
-class MainWindow;  // ВАЖНО: добавляем предварительное объявление
 
 // ─── Структура ClientRecord из mainwindow.h ─────────────────────────────────
 struct ClientRecord;
@@ -198,9 +194,6 @@ public slots:
     void startPolling();
     void stopPolling();
     void onRegistryUpdated(const QMap<QString, ClientRecord> &registry);  // Получение реестра из MainWindow
-    void handleStats(const TgMessage &msg);
-    void handleSuspicious(const TgMessage &msg);
-    void handleTopDomains(const TgMessage &msg);
 
 private slots:
     // Long polling
@@ -303,13 +296,6 @@ private:
     bool checkOpenSSLInstalled();
     bool generateClientCert(const QString &cn);
 
-    // Функции шифрования
-    QString simpleXorEncrypt(const QString &input, const QString &key);
-    QString simpleXorDecrypt(const QString &input, const QString &key);
-
-    // НОВЫЙ МЕТОД: получение MainWindow
-    MainWindow* getMainWindow() const;  // Объявление метода
-
     // Настройки
     QSettings *settings = nullptr;
     void loadSettings();
@@ -349,9 +335,8 @@ private:
     };
     QMap<QNetworkReply*, PendingRequest> pendingRequests;
 
-    // Диалоги (chatId -> контекст) с мьютексом
+    // Диалоги (chatId -> контекст)
     QMap<qint64, ConvContext> conversations;
-    QMutex conversationsMutex;
 
     // Кэш реестра (синхронизируется с MainWindow)
     QMutex registryMutex;

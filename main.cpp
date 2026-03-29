@@ -180,13 +180,6 @@ int main(int argc, char *argv[])
     // Устанавливаем обработчик сообщений Qt
     qInstallMessageHandler(qtMessageHandler);
 
-    // Гарантируем валидный рабочий каталог для дочерних процессов.
-    // Если приложение запущено из удалённого/несуществующего каталога,
-    // QProcess наследует невалидный cwd -> "getcwd: нет доступа к родительским каталогам"
-    if (QDir::currentPath().isEmpty() || !QDir(QDir::currentPath()).exists()) {
-        QDir::setCurrent("/");
-    }
-
     QApplication app(argc, argv);
 
     // Настройка организации и приложения
@@ -203,11 +196,7 @@ int main(int argc, char *argv[])
 
     // Настройка русского перевода для Qt
     QTranslator qtTranslator;
-#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     QString translationsPath = QLibraryInfo::path(QLibraryInfo::TranslationsPath);
-#else
-    QString translationsPath = QLibraryInfo::location(QLibraryInfo::TranslationsPath);
-#endif
     if (qtTranslator.load(QLocale(), "qt", "_", translationsPath)) {
         app.installTranslator(&qtTranslator);
     }
