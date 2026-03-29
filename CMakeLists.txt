@@ -16,6 +16,8 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Network
     Concurrent
+    Sql
+    Positioning
 )
 
 # ---- исходники ----
@@ -27,6 +29,10 @@ set(SOURCES
     dns_monitor.h
     tgbot_manager.cpp
     tgbot_manager.h
+    mtproxymanager.cpp
+    mtproxymanager.h
+    client_stats.cpp
+    client_stats.h
 )
 
 add_executable(TorManager ${SOURCES})
@@ -38,4 +44,6 @@ target_link_libraries(TorManager PRIVATE
     Qt6::Widgets
     Qt6::Network
     Qt6::Concurrent
+    Qt6::Sql
+    Qt6::Positioning
 )
