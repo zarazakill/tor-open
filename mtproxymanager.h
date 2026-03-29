@@ -65,6 +65,17 @@ struct MTProxyStats {
     QDateTime peakTime;         // Время пика
     double avgSpeed;            // Средняя скорость (байт/с)
     int uniqueUsers;            // Уникальных пользователей
+
+    // Конструктор с инициализацией нулями
+    MTProxyStats() 
+        : totalConnections(0)
+        , activeConnections(0)
+        , totalBytesRx(0)
+        , totalBytesTx(0)
+        , peakConnections(0)
+        , avgSpeed(0.0)
+        , uniqueUsers(0)
+    {}
 };
 
 /**

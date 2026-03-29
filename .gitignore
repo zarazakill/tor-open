@@ -3,11 +3,25 @@
 build/
 CMakeFiles/
 *.o
-*.d
-*.autogen/
-moc_*.cpp
-moc_*.h
+*.obj
+*.out
 
-# Logs
+# Dependencies
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Logs and temp files
 *.log
+*.tmp
+
+# Editors
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.local
+*.env.*
 ```
