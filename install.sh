@@ -45,7 +45,7 @@ case "$OS" in
         if [[ "$OS" == "debian" && "${VERSION_NUM:-0}" -ge 13 ]] || \
            [[ "$OS" == "ubuntu" && "${VERSION%%.*}" -ge 24 ]]; then
             echo "Используем Qt6..."
-            QT_PKG="qt6-base-dev"
+            QT_PKG="qt6-base-dev qt6-positioning-dev"
         else
             echo "Используем Qt5..."
             QT_PKG="qtbase5-dev qttools5-dev"
@@ -73,14 +73,14 @@ case "$OS" in
 
     fedora)
         sudo dnf install -y gcc-c++ cmake git \
-            qt6-qtbase-devel \
+            qt6-qtbase-devel qt6-qtpositioning-devel \
             tor openvpn obfs4
         ;;
 
     arch|manjaro)
         sudo pacman -S --needed --noconfirm \
             base-devel cmake git \
-            qt6-base \
+            qt6-base qt6-positioning \
             tor openvpn obfs4proxy
         ;;
 
