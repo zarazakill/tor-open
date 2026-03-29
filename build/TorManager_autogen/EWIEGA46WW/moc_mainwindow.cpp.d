@@ -370,6 +370,7 @@
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QMutex \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QObject \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QProcess \
+  /usr/include/x86_64-linux-gnu/qt6/QtCore/QRandomGenerator \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QRegularExpression \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QScopedPointer \
   /usr/include/x86_64-linux-gnu/qt6/QtCore/QSet \

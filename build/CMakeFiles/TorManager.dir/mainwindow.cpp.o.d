@@ -967,6 +967,7 @@ CMakeFiles/TorManager.dir/mainwindow.cpp.o: /workspace/mainwindow.cpp \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QExplicitlySharedDataPointer \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QDateTime \
  /usr/include/x86_64-linux-gnu/qt6/QtPositioning/QGeoCoordinate \
+ /usr/include/x86_64-linux-gnu/qt6/QtCore/QRandomGenerator \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/QCloseEvent \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/qevent.h \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/qeventpoint.h \
