@@ -533,6 +533,8 @@ CMakeFiles/TorManager.dir/mainwindow.cpp.o: /workspace/mainwindow.cpp \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QWidget \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
+ /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
+ /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QDate \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QDir \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qdir.h \
@@ -986,8 +988,6 @@ CMakeFiles/TorManager.dir/mainwindow.cpp.o: /workspace/mainwindow.cpp \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qmenu.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QStatusBar \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qstatusbar.h \
- /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
- /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/QRegularExpressionValidator \
  /usr/include/x86_64-linux-gnu/qt6/QtGui/qvalidator.h \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QApplication \

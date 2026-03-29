@@ -607,6 +607,7 @@
   /usr/include/x86_64-linux-gnu/qt6/QtGui/qvalidator.h \
   /usr/include/x86_64-linux-gnu/qt6/QtGui/qwindowdefs.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkAccessManager \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkReply \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QSslConfiguration \
@@ -614,6 +615,7 @@
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qabstractsocket.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qhostaddress.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkaccessmanager.h \
+  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkreply.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkrequest.h \
   /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qssl.h \

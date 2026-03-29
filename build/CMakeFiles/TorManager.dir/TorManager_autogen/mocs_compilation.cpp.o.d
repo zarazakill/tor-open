@@ -568,6 +568,8 @@ CMakeFiles/TorManager.dir/TorManager_autogen/mocs_compilation.cpp.o: \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/QWidget \
  /usr/include/x86_64-linux-gnu/qt6/QtWidgets/qwidget.h \
  /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkRequest \
+ /usr/include/x86_64-linux-gnu/qt6/QtNetwork/QNetworkProxy \
+ /usr/include/x86_64-linux-gnu/qt6/QtNetwork/qnetworkproxy.h \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QDate \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/QDir \
  /usr/include/x86_64-linux-gnu/qt6/QtCore/qdir.h \

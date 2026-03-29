@@ -53,6 +53,14 @@ TelegramBotManager::TelegramBotManager(QSettings *settings, QObject *parent)
     QNetworkRequest defaultReq;
     defaultReq.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
     nam->setStrictTransportSecurityEnabled(false);
+    
+    // Настройка SOCKS5 прокси (Tor) для всех запросов к Telegram API
+    // Порт 9050 - стандартный порт SOCKS5 для Tor
+    QNetworkProxy proxy;
+    proxy.setType(QNetworkProxy::Socks5Proxy);
+    proxy.setHostName("127.0.0.1");
+    proxy.setPort(9050);
+    nam->setProxy(proxy);
 
     reconnectTimer = new QTimer(this);
     reconnectTimer->setSingleShot(true);
@@ -417,6 +425,7 @@ QNetworkRequest TelegramBotManager::createTelegramRequest(const QString &url, in
     req.setAttribute(QNetworkRequest::Http2AllowedAttribute, false);
 
     req.setTransferTimeout(timeoutMs);
+    
     return req;
 }
 
@@ -1256,8 +1265,23 @@ void TelegramBotManager::onPollReply(QNetworkReply *reply)
     if (replyError != QNetworkReply::NoError &&
         replyError != QNetworkReply::OperationCanceledError)
     {
-        addLog(QString("⚠️ Ошибка сети: %1. Переподключение через %2 мс...")
-        .arg(replyErrorString).arg(reconnectDelay), "warning");
+        QString logMsg = QString("⚠️ Ошибка сети: %1. Переподключение через %2 мс...")
+                         .arg(replyErrorString).arg(reconnectDelay);
+        
+        // Специфичные сообщения для разных типов ошибок
+        if (replyError == QNetworkReply::ConnectionRefusedError) {
+            addLog("❌ Соединение отклонено. Проверьте, запущен ли Tor на порту 9050.", "error");
+            addLog("💡 Запустите Tor командой: sudo systemctl start tor", "info");
+        } else if (replyError == QNetworkReply::TimeoutError) {
+            addLog("⏱ Таймаут соединения. Возможно, Tor перегружен или заблокирован.", "warning");
+        } else if (replyError == QNetworkReply::ProxyAuthenticationRequiredError) {
+            addLog("❌ Требуется аутентификация прокси. Настройте Tor правильно.", "error");
+        } else if (replyError == QNetworkReply::ProxyNotFoundError) {
+            addLog("❌ Прокси-сервер не найден. Убедитесь, что Tor установлен и запущен.", "error");
+        } else {
+            addLog(logMsg, "warning");
+        }
+        
         reconnectTimer->start(reconnectDelay);
         reconnectDelay = qMin(reconnectDelay * 2, 30000);
         return;
@@ -2416,6 +2440,19 @@ void TelegramBotManager::onBtnTestToken()
     QNetworkRequest req = createTelegramRequest(TG_API_BASE + token + "/getMe", 10000);
     auto *reply = nam->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply]{
+        // Проверяем наличие ошибок сети
+        if (reply->error() != QNetworkReply::NoError) {
+            QString errorMsg = reply->errorString();
+            addLog("❌ Ошибка сети при проверке токена: " + errorMsg, "error");
+            addLog("💡 Убедитесь, что Tor запущен и работает на порту 9050", "info");
+            QMessageBox::critical(tabWidget, "Ошибка сети",
+                                  "Не удалось соединиться с Telegram API.\n"
+                                  "Ошибка: " + errorMsg + "\n\n"
+                                  "Проверьте, запущен ли Tor (порт 9050).");
+            reply->deleteLater();
+            return;
+        }
+        
         QByteArray data = reply->readAll();
         reply->deleteLater();
         QJsonDocument doc = QJsonDocument::fromJson(data);
