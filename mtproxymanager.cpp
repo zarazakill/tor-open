@@ -115,6 +115,7 @@ bool MTProxyManager::initDatabase()
     return true;
 }
 
+// В функции MTProxyManager::startProxy, замените блок с аргументами:
 bool MTProxyManager::startProxy(int port, const QString &secret)
 {
     if (proxyRunning) {
@@ -127,135 +128,210 @@ bool MTProxyManager::startProxy(int port, const QString &secret)
         return false;
     }
 
+    // Проверяем существование бинарника
+    if (!QFile::exists(mtprotoPath)) {
+        emit logMessage("MTProto-Proxy бинарник не найден: " + mtprotoPath, "error");
+        return false;
+    }
+
     currentPort = port;
     if (!secret.isEmpty()) {
         currentSecret = secret;
     } else if (currentSecret.isEmpty()) {
-        currentSecret = generateSecret();
+        currentSecret = generateSecureSecret();
     }
 
     if (!validateSecret(currentSecret)) {
-        emit logMessage("Неверный формат секрета", "error");
+        emit logMessage("Неверный формат секрета (требуется 32 hex символа)", "error");
         return false;
     }
 
-    // FIX #3: исправлены аргументы CLI — официальный синтаксис mtproto-proxy
-    // Загружаем proxy-secret и конфиг если есть
     QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QString proxySecretPath = appData + "/proxy-secret";
     QString proxyConfPath   = appData + "/proxy-multi.conf";
 
-    // Скачиваем файлы конфигурации если их нет — асинхронно чтобы не блокировать GUI
+    // Скачиваем файлы конфигурации если их нет
     if (!QFile::exists(proxySecretPath) || !QFile::exists(proxyConfPath)) {
-        emit logMessage("Загрузка proxy-secret и proxy-multi.conf (асинхронно)...", "info");
-        // Запускаем скачивание в отдельном потоке, повторно вызываем startProxy после
-        QString psp = proxySecretPath, pcp = proxyConfPath;
-        int savedPort = port; QString savedSecret = currentSecret;
-        QThread *dlThread = QThread::create([this, psp, pcp, savedPort, savedSecret]() {
+        emit logMessage("Загрузка proxy-secret и proxy-multi.conf...", "info");
 
-        // FIX: скачиваем через SOCKS5 Tor (порт 9050), т.к. весь трафик
-        // может быть перехвачен TransPort. Пробуем сначала прямо, потом через Tor.
-        auto download = [this](const QString &url, const QString &dest,
-                                bool useTor) -> bool {
-            QProcess dl;
-            QStringList args;
-            args << "-s" << "--max-time" << "15" << "-o" << dest;
-            if (useTor) {
-                args << "--socks5-hostname" << "127.0.0.1:9050";
-            }
-            args << url;
-            dl.start("curl", args);
-            if (!dl.waitForFinished(20000)) {
-                dl.kill();
-                emit logMessage((useTor ? "[Tor] " : "[Direct] ") +
-                                QString("Таймаут скачивания: ") + url, "warning");
-                return false;
-            }
-            if (dl.exitCode() != 0) {
-                emit logMessage((useTor ? "[Tor] " : "[Direct] ") +
-                                QString("curl ошибка %1: ").arg(dl.exitCode()) +
-                                QString::fromUtf8(dl.readAllStandardError()).trimmed(), "warning");
-                return false;
-            }
-            if (!QFile::exists(dest) || QFileInfo(dest).size() == 0) {
-                emit logMessage("Файл не скачан или пустой: " + dest, "error");
-                return false;
-            }
-            return true;
-        };
+        QThread *dlThread = QThread::create([this, proxySecretPath, proxyConfPath, port, secret]() {
+            auto download = [this](const QString &url, const QString &dest, bool useTor) -> bool {
+                QProcess dl;
+                QStringList args;
+                args << "-s" << "--max-time" << "15" << "-o" << dest;
+                if (useTor) {
+                    args << "--socks5-hostname" << "127.0.0.1:9050";
+                }
+                args << url;
+                dl.start("curl", args);
+                if (!dl.waitForFinished(20000)) {
+                    dl.kill();
+                    return false;
+                }
+                if (dl.exitCode() != 0) {
+                    return false;
+                }
+                return QFile::exists(dest) && QFileInfo(dest).size() > 0;
+            };
 
-        // Пробуем прямое соединение, затем через Tor SOCKS5
-        auto tryDownload = [&](const QString &url, const QString &dest) -> bool {
-            emit logMessage("Скачивание: " + url, "info");
-            if (download(url, dest, false)) return true;
-            emit logMessage("Прямое соединение не удалось, пробуем через Tor...", "warning");
-            if (download(url, dest, true)) return true;
-            emit logMessage("Не удалось скачать: " + url, "error");
-            return false;
-        };
+            auto tryDownload = [&](const QString &url, const QString &dest) -> bool {
+                if (download(url, dest, false)) return true;
+                emit logMessage("Прямое соединение не удалось, пробуем через Tor...", "warning");
+                return download(url, dest, true);
+            };
 
-        bool ok1 = tryDownload("https://core.telegram.org/getProxySecret", proxySecretPath);
-        bool ok2 = tryDownload("https://core.telegram.org/getProxyConfig",  proxyConfPath);
+            bool ok1 = tryDownload("https://core.telegram.org/getProxySecret", proxySecretPath);
+            bool ok2 = tryDownload("https://core.telegram.org/getProxyConfig", proxyConfPath);
 
             if (!ok1 || !ok2) {
-                emit logMessage("Не удалось скачать конфигурацию Telegram.", "error");
-                emit logMessage("Подсказка: убедитесь что curl установлен и есть доступ в интернет.", "warning");
+                emit logMessage("Не удалось загрузить конфигурацию Telegram", "error");
                 return;
             }
-            emit logMessage("proxy-secret и proxy-multi.conf успешно загружены", "success");
-            // Повторно запускаем прокси теперь когда файлы есть
-            QMetaObject::invokeMethod(this, [this, savedPort, savedSecret]() {
-                startProxy(savedPort, savedSecret);
+
+            emit logMessage("✅ proxy-secret и proxy-multi.conf успешно загружены", "success");
+
+            QMetaObject::invokeMethod(this, [this, port, secret]() {
+                startProxy(port, secret);
             }, Qt::QueuedConnection);
         });
-        dlThread->start();
-        connect(dlThread, &QThread::finished, dlThread, &QThread::deleteLater);
-        return false; // выходим сейчас, startProxy повторится после скачивания
-    }
 
-    QStringList args;
-    args << "-u" << "nobody";
-    args << "-p" << "8888";                      // порт статистики (localhost)
-    args << "-H" << QString::number(port);       // порт для клиентов
-    args << "-S" << currentSecret;
-    args << "-M" << "1";                         // воркеры
-    // FIX: --aes-pwd принимает только proxy-secret,
-    // proxy-multi.conf передаётся как позиционный аргумент <config-file>
-    if (QFile::exists(proxySecretPath)) {
-        args << "--aes-pwd" << proxySecretPath;
-    }
-    if (QFile::exists(proxyConfPath)) {
-        args << proxyConfPath;  // positional <config-file>
-    } else {
-        emit logMessage("proxy-multi.conf не найден: " + proxyConfPath, "error");
-        emit logMessage("Попытка скачать конфиг повторно...", "warning");
+        connect(dlThread, &QThread::finished, dlThread, &QThread::deleteLater);
+        dlThread->start();
         return false;
     }
 
-    emit logMessage("Запуск MTProxy на порту " + QString::number(port), "info");
-    emit logMessage("Секрет: " + currentSecret, "info");
+    // ========== СОЗДАНИЕ КОРРЕКТНОГО КОНФИГУРАЦИОННОГО ФАЙЛА ==========
+    // Правильный формат для mtproto-proxy:
+    //   proxy <адрес>:<порт>;
+    // ВАЖНО: секрет НЕ указывается в конфиге (используется через --aes-pwd)
 
+    QString serverAddress = "wwcat.duckdns.org";
+
+    // Формат с точкой с запятой (как требует новая версия)
+    QString configLine = "proxy " + serverAddress + ":" + QString::number(port) + ";\n";
+
+    QString configContent;
+    configContent += "# MTProxy Multi-Config File\n";
+    configContent += "# Generated by TorManager MTProxy\n";
+    configContent += "# Date: " + QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") + "\n";
+    configContent += "\n";
+    configContent += configLine;
+
+    // Добавляем резервный вариант с IP
+    configContent += "# proxy 0.0.0.0:" + QString::number(port) + ";\n";
+
+    QFile confFile(proxyConfPath);
+    if (!confFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+        emit logMessage("Не удалось записать конфигурационный файл: " + proxyConfPath, "error");
+        return false;
+    }
+    confFile.write(configContent.toUtf8());
+    confFile.close();
+
+    emit logMessage("📝 Создан конфигурационный файл: " + proxyConfPath, "info");
+    emit logMessage("   Строка конфигурации: " + configLine.trimmed(), "info");
+
+    // ========== ФОРМИРОВАНИЕ АРГУМЕНТОВ ЗАПУСКА ==========
+    QStringList args;
+
+    // Базовые аргументы
+    args << "-u" << "nobody";
+    args << "-p" << "8888";
+    args << "-H" << QString::number(port);
+    args << "-M" << "1";
+
+    // ВАЖНО: НЕ передаём -S, секрет только в конфигурационном файле!
+
+    // AES пароль (обязателен)
+    if (QFile::exists(proxySecretPath)) {
+        args << "--aes-pwd" << proxySecretPath;
+    } else {
+        emit logMessage("❌ proxy-secret не найден: " + proxySecretPath, "error");
+        return false;
+    }
+
+    // Конфигурационный файл (позиционный аргумент)
+    args << proxyConfPath;
+
+    // NAT info
+    QString externalIp;
+    QProcess ipProc;
+    ipProc.start("curl", {"-s", "--max-time", "5", "ifconfig.me"});
+    if (ipProc.waitForFinished(5000) && ipProc.exitCode() == 0) {
+        externalIp = QString::fromUtf8(ipProc.readAllStandardOutput()).trimmed();
+    }
+
+    if (externalIp.isEmpty()) {
+        externalIp = serverAddress;
+        emit logMessage("⚠️ Не удалось определить внешний IP, используем домен: " + serverAddress, "warning");
+    }
+
+    QString internalIp;
+    QProcess ifProc;
+    ifProc.start("sh", {"-c", "ip route get 1.1.1.1 | grep -oP 'src \\K\\S+' | head -1"});
+    if (ifProc.waitForFinished(3000) && ifProc.exitCode() == 0) {
+        internalIp = QString::fromUtf8(ifProc.readAllStandardOutput()).trimmed();
+    }
+
+    if (internalIp.isEmpty()) {
+        internalIp = "127.0.0.1";
+        emit logMessage("⚠️ Не удалось определить внутренний IP, используем 127.0.0.1", "warning");
+    }
+
+    // NAT info формат: <внешний_ip>:<внутренний_ip>
+    QString natInfo = externalIp + ":" + internalIp;
+    args << "--nat-info" << natInfo;
+
+    emit logMessage("🚀 Запуск MTProxy на порту " + QString::number(port), "info");
+    emit logMessage("   Домен: " + serverAddress, "info");
+    emit logMessage("   NAT Info: " + natInfo, "info");
+    emit logMessage("   Секрет: " + currentSecret.left(16) + "... (только в конфиге)", "info");
+
+    // Логируем команду (без секрета)
+    QString cmdLog = mtprotoPath + " " + args.join(" ");
+    emit logMessage("   Команда: " + cmdLog, "info");
+
+    // Запускаем процесс
     mtprotoProcess->start(mtprotoPath, args);
 
     if (!mtprotoProcess->waitForStarted(5000)) {
-        emit logMessage("Не удалось запустить MTProxy: " + mtprotoProcess->errorString(), "error");
-        emit proxyError(mtprotoProcess->errorString());
+        QString errorMsg = mtprotoProcess->errorString();
+        emit logMessage("❌ Не удалось запустить MTProxy: " + errorMsg, "error");
+        emit proxyError(errorMsg);
+
+        QProcess portCheck;
+        portCheck.start("sh", {"-c", QString("ss -tlnp 2>/dev/null | grep ':%1 '").arg(port)});
+        portCheck.waitForFinished(2000);
+        if (!portCheck.readAllStandardOutput().isEmpty()) {
+            emit logMessage("   Порт " + QString::number(port) + " уже занят другим процессом", "warning");
+        }
         return false;
     }
 
     proxyRunning = true;
-    statsTimer->start();
-    cleanupTimer->start();
+    statsTimer->start(STATS_UPDATE_INTERVAL);
+    cleanupTimer->start(CLEANUP_INTERVAL);
 
-    // Сброс статистики при новом запуске
+    // Сброс статистики
     {
         QMutexLocker locker(&statsMutex);
         currentStats = MTProxyStats();
         peakConnections = 0;
+        currentStats.activeConnections = 0;
+        currentStats.totalConnections = 0;
+        currentStats.totalBytesRx = 0;
+        currentStats.totalBytesTx = 0;
     }
 
     emit proxyStarted();
-    emit logMessage("MTProxy успешно запущен", "success");
+    emit logMessage("✅ MTProxy успешно запущен на порту " + QString::number(port), "success");
+
+    // Формируем ссылку для Telegram
+    QString proxyLink = QString("tg://proxy?server=%1&port=%2&secret=%3")
+    .arg(serverAddress)
+    .arg(port)
+    .arg(currentSecret);
+    emit logMessage("🔗 Ссылка для подключения: " + proxyLink, "info");
 
     return true;
 }
