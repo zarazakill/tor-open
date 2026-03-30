@@ -1,20 +1,26 @@
 /****************************************************************************
 ** Meta object code from reading C++ file 'tgbot_manager.h'
 **
-** Created by: The Qt Meta Object Compiler version 68 (Qt 6.4.2)
+** Created by: The Qt Meta Object Compiler version 68 (Qt 6.8.2)
 **
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
-#include <memory>
 #include "../../../tgbot_manager.h"
 #include <QtNetwork/QSslError>
 #include <QtGui/qtextcursor.h>
 #include <QtCore/qmetatype.h>
+
+#include <QtCore/qtmochelpers.h>
+
+#include <memory>
+
+
+#include <QtCore/qxptype_traits.h>
 #if !defined(Q_MOC_OUTPUT_REVISION)
 #error "The header file 'tgbot_manager.h' doesn't include <QObject>."
 #elif Q_MOC_OUTPUT_REVISION != 68
-#error "This file was generated using the moc from 6.4.2. It"
+#error "This file was generated using the moc from 6.8.2. It"
 #error "cannot be used with the include files from this version of Qt."
 #error "(The moc has changed too much.)"
 #endif
@@ -23,224 +29,16 @@
 #define Q_CONSTINIT
 #endif
 
-QT_BEGIN_MOC_NAMESPACE
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
+QT_WARNING_DISABLE_GCC("-Wuseless-cast")
 namespace {
-struct qt_meta_stringdata_TelegramBotManager_t {
-    uint offsetsAndSizes[206];
-    char stringdata0[19];
-    char stringdata1[11];
-    char stringdata2[1];
-    char stringdata3[4];
-    char stringdata4[6];
-    char stringdata5[14];
-    char stringdata6[8];
-    char stringdata7[14];
-    char stringdata8[3];
-    char stringdata9[14];
-    char stringdata10[15];
-    char stringdata11[12];
-    char stringdata12[13];
-    char stringdata13[12];
-    char stringdata14[18];
-    char stringdata15[27];
-    char stringdata16[9];
-    char stringdata17[7];
-    char stringdata18[12];
-    char stringdata19[15];
-    char stringdata20[6];
-    char stringdata21[12];
-    char stringdata22[7];
-    char stringdata23[5];
-    char stringdata24[15];
-    char stringdata25[10];
-    char stringdata26[12];
-    char stringdata27[10];
-    char stringdata28[20];
-    char stringdata29[16];
-    char stringdata30[13];
-    char stringdata31[9];
-    char stringdata32[8];
-    char stringdata33[14];
-    char stringdata34[7];
-    char stringdata35[15];
-    char stringdata36[10];
-    char stringdata37[16];
-    char stringdata38[12];
-    char stringdata39[11];
-    char stringdata40[13];
-    char stringdata41[11];
-    char stringdata42[14];
-    char stringdata43[13];
-    char stringdata44[16];
-    char stringdata45[18];
-    char stringdata46[13];
-    char stringdata47[25];
-    char stringdata48[19];
-    char stringdata49[18];
-    char stringdata50[13];
-    char stringdata51[4];
-    char stringdata52[19];
-    char stringdata53[12];
-    char stringdata54[12];
-    char stringdata55[17];
-    char stringdata56[18];
-    char stringdata57[14];
-    char stringdata58[12];
-    char stringdata59[18];
-    char stringdata60[11];
-    char stringdata61[27];
-    char stringdata62[21];
-    char stringdata63[16];
-    char stringdata64[7];
-    char stringdata65[20];
-    char stringdata66[20];
-    char stringdata67[7];
-    char stringdata68[18];
-    char stringdata69[13];
-    char stringdata70[29];
-    char stringdata71[13];
-    char stringdata72[8];
-    char stringdata73[11];
-    char stringdata74[16];
-    char stringdata75[4];
-    char stringdata76[23];
-    char stringdata77[7];
-    char stringdata78[24];
-    char stringdata79[10];
-    char stringdata80[10];
-    char stringdata81[12];
-    char stringdata82[12];
-    char stringdata83[19];
-    char stringdata84[8];
-    char stringdata85[19];
-    char stringdata86[16];
-    char stringdata87[8];
-    char stringdata88[8];
-    char stringdata89[11];
-    char stringdata90[15];
-    char stringdata91[18];
-    char stringdata92[15];
-    char stringdata93[14];
-    char stringdata94[17];
-    char stringdata95[19];
-    char stringdata96[14];
-    char stringdata97[24];
-    char stringdata98[14];
-    char stringdata99[7];
-    char stringdata100[18];
-    char stringdata101[19];
-    char stringdata102[18];
-};
-#define QT_MOC_LITERAL(ofs, len) \
-    uint(sizeof(qt_meta_stringdata_TelegramBotManager_t::offsetsAndSizes) + ofs), len 
-Q_CONSTINIT static const qt_meta_stringdata_TelegramBotManager_t qt_meta_stringdata_TelegramBotManager = {
-    {
-        QT_MOC_LITERAL(0, 18),  // "TelegramBotManager"
-        QT_MOC_LITERAL(19, 10),  // "logMessage"
-        QT_MOC_LITERAL(30, 0),  // ""
-        QT_MOC_LITERAL(31, 3),  // "msg"
-        QT_MOC_LITERAL(35, 5),  // "level"
-        QT_MOC_LITERAL(41, 13),  // "statusChanged"
-        QT_MOC_LITERAL(55, 7),  // "running"
-        QT_MOC_LITERAL(63, 13),  // "clientCreated"
-        QT_MOC_LITERAL(77, 2),  // "cn"
-        QT_MOC_LITERAL(80, 13),  // "clientRevoked"
-        QT_MOC_LITERAL(94, 14),  // "clientsChanged"
-        QT_MOC_LITERAL(109, 11),  // "caGenerated"
-        QT_MOC_LITERAL(121, 12),  // "startPolling"
-        QT_MOC_LITERAL(134, 11),  // "stopPolling"
-        QT_MOC_LITERAL(146, 17),  // "onRegistryUpdated"
-        QT_MOC_LITERAL(164, 26),  // "QMap<QString,ClientRecord>"
-        QT_MOC_LITERAL(191, 8),  // "registry"
-        QT_MOC_LITERAL(200, 6),  // "doPoll"
-        QT_MOC_LITERAL(207, 11),  // "onPollReply"
-        QT_MOC_LITERAL(219, 14),  // "QNetworkReply*"
-        QT_MOC_LITERAL(234, 5),  // "reply"
-        QT_MOC_LITERAL(240, 11),  // "sendMessage"
-        QT_MOC_LITERAL(252, 6),  // "chatId"
-        QT_MOC_LITERAL(259, 4),  // "text"
-        QT_MOC_LITERAL(264, 14),  // "inlineKeyboard"
-        QT_MOC_LITERAL(279, 9),  // "parseMode"
-        QT_MOC_LITERAL(289, 11),  // "editMessage"
-        QT_MOC_LITERAL(301, 9),  // "messageId"
-        QT_MOC_LITERAL(311, 19),  // "answerCallbackQuery"
-        QT_MOC_LITERAL(331, 15),  // "callbackQueryId"
-        QT_MOC_LITERAL(347, 12),  // "sendDocument"
-        QT_MOC_LITERAL(360, 8),  // "filePath"
-        QT_MOC_LITERAL(369, 7),  // "caption"
-        QT_MOC_LITERAL(377, 13),  // "processUpdate"
-        QT_MOC_LITERAL(391, 6),  // "update"
-        QT_MOC_LITERAL(398, 14),  // "processMessage"
-        QT_MOC_LITERAL(413, 9),  // "TgMessage"
-        QT_MOC_LITERAL(423, 15),  // "processCallback"
-        QT_MOC_LITERAL(439, 11),  // "handleStart"
-        QT_MOC_LITERAL(451, 10),  // "handleHelp"
-        QT_MOC_LITERAL(462, 12),  // "handleStatus"
-        QT_MOC_LITERAL(475, 10),  // "handleList"
-        QT_MOC_LITERAL(486, 13),  // "handleNewUser"
-        QT_MOC_LITERAL(500, 12),  // "handleRevoke"
-        QT_MOC_LITERAL(513, 15),  // "handleGetConfig"
-        QT_MOC_LITERAL(529, 17),  // "handleInstruction"
-        QT_MOC_LITERAL(547, 12),  // "handleCancel"
-        QT_MOC_LITERAL(560, 24),  // "handleNewUserForNonAdmin"
-        QT_MOC_LITERAL(585, 18),  // "sendExistingConfig"
-        QT_MOC_LITERAL(604, 17),  // "handleConvMessage"
-        QT_MOC_LITERAL(622, 12),  // "ConvContext&"
-        QT_MOC_LITERAL(635, 3),  // "ctx"
-        QT_MOC_LITERAL(639, 18),  // "handleConvCallback"
-        QT_MOC_LITERAL(658, 11),  // "convConsent"
-        QT_MOC_LITERAL(670, 11),  // "convGotName"
-        QT_MOC_LITERAL(682, 16),  // "convExpiryChoice"
-        QT_MOC_LITERAL(699, 17),  // "convGotExpiryDate"
-        QT_MOC_LITERAL(717, 13),  // "convDoConfirm"
-        QT_MOC_LITERAL(731, 11),  // "convConfirm"
-        QT_MOC_LITERAL(743, 17),  // "convRevokeConfirm"
-        QT_MOC_LITERAL(761, 10),  // "generateCA"
-        QT_MOC_LITERAL(772, 26),  // "generateClientCertDetailed"
-        QT_MOC_LITERAL(799, 20),  // "CertGenerationResult"
-        QT_MOC_LITERAL(820, 15),  // "buildOvpnConfig"
-        QT_MOC_LITERAL(836, 6),  // "expiry"
-        QT_MOC_LITERAL(843, 19),  // "writeRegistryClient"
-        QT_MOC_LITERAL(863, 19),  // "banClientInRegistry"
-        QT_MOC_LITERAL(883, 6),  // "banned"
-        QT_MOC_LITERAL(890, 17),  // "revokeClientCerts"
-        QT_MOC_LITERAL(908, 12),  // "readRegistry"
-        QT_MOC_LITERAL(921, 28),  // "QMap<QString,TgClientRecord>"
-        QT_MOC_LITERAL(950, 12),  // "saveRegistry"
-        QT_MOC_LITERAL(963, 7),  // "clients"
-        QT_MOC_LITERAL(971, 10),  // "saveClient"
-        QT_MOC_LITERAL(982, 15),  // "TgClientRecord&"
-        QT_MOC_LITERAL(998, 3),  // "rec"
-        QT_MOC_LITERAL(1002, 22),  // "logCertGenerationError"
-        QT_MOC_LITERAL(1025, 6),  // "result"
-        QT_MOC_LITERAL(1032, 23),  // "generateClientCertAsync"
-        QT_MOC_LITERAL(1056, 9),  // "hasExpiry"
-        QT_MOC_LITERAL(1066, 9),  // "editMsgId"
-        QT_MOC_LITERAL(1076, 11),  // "isAdminFlow"
-        QT_MOC_LITERAL(1088, 11),  // "originalMsg"
-        QT_MOC_LITERAL(1100, 18),  // "handleNetworkError"
-        QT_MOC_LITERAL(1119, 7),  // "context"
-        QT_MOC_LITERAL(1127, 18),  // "retryFailedRequest"
-        QT_MOC_LITERAL(1146, 15),  // "QNetworkRequest"
-        QT_MOC_LITERAL(1162, 7),  // "request"
-        QT_MOC_LITERAL(1170, 7),  // "payload"
-        QT_MOC_LITERAL(1178, 10),  // "retryCount"
-        QT_MOC_LITERAL(1189, 14),  // "onBtnStartStop"
-        QT_MOC_LITERAL(1204, 17),  // "onBtnSaveSettings"
-        QT_MOC_LITERAL(1222, 14),  // "onBtnTestToken"
-        QT_MOC_LITERAL(1237, 13),  // "onBtnAddAdmin"
-        QT_MOC_LITERAL(1251, 16),  // "onBtnRemoveAdmin"
-        QT_MOC_LITERAL(1268, 18),  // "onBtnSendBroadcast"
-        QT_MOC_LITERAL(1287, 13),  // "onBtnClearLog"
-        QT_MOC_LITERAL(1301, 23),  // "onTokenVisibilityToggle"
-        QT_MOC_LITERAL(1325, 13),  // "onPollTimeout"
-        QT_MOC_LITERAL(1339, 6),  // "addLog"
-        QT_MOC_LITERAL(1346, 17),  // "updateStatusLabel"
-        QT_MOC_LITERAL(1364, 18),  // "updateClientsTable"
-        QT_MOC_LITERAL(1383, 17)   // "refreshAdminsList"
-    },
+struct qt_meta_tag_ZN18TelegramBotManagerE_t {};
+} // unnamed namespace
+
+
+#ifdef QT_MOC_HAS_STRINGDATA
+static constexpr auto qt_meta_stringdata_ZN18TelegramBotManagerE = QtMocHelpers::stringData(
     "TelegramBotManager",
     "logMessage",
     "",
@@ -344,14 +142,15 @@ Q_CONSTINIT static const qt_meta_stringdata_TelegramBotManager_t qt_meta_stringd
     "updateStatusLabel",
     "updateClientsTable",
     "refreshAdminsList"
-};
-#undef QT_MOC_LITERAL
-} // unnamed namespace
+);
+#else  // !QT_MOC_HAS_STRINGDATA
+#error "qtmochelpers.h not found or too old."
+#endif // !QT_MOC_HAS_STRINGDATA
 
-Q_CONSTINIT static const uint qt_meta_data_TelegramBotManager[] = {
+Q_CONSTINIT static const uint qt_meta_data_ZN18TelegramBotManagerE[] = {
 
  // content:
-      10,       // revision
+      12,       // revision
        0,       // classname
        0,    0, // classinfo
       73,   14, // methods
@@ -520,11 +319,11 @@ Q_CONSTINIT static const uint qt_meta_data_TelegramBotManager[] = {
 
 Q_CONSTINIT const QMetaObject TelegramBotManager::staticMetaObject = { {
     QMetaObject::SuperData::link<QObject::staticMetaObject>(),
-    qt_meta_stringdata_TelegramBotManager.offsetsAndSizes,
-    qt_meta_data_TelegramBotManager,
+    qt_meta_stringdata_ZN18TelegramBotManagerE.offsetsAndSizes,
+    qt_meta_data_ZN18TelegramBotManagerE,
     qt_static_metacall,
     nullptr,
-    qt_incomplete_metaTypeArray<qt_meta_stringdata_TelegramBotManager_t,
+    qt_incomplete_metaTypeArray<qt_meta_tag_ZN18TelegramBotManagerE_t,
         // Q_OBJECT / Q_GADGET
         QtPrivate::TypeAndForceComplete<TelegramBotManager, std::true_type>,
         // method 'logMessage'
@@ -783,9 +582,8 @@ Q_CONSTINIT const QMetaObject TelegramBotManager::staticMetaObject = { {
 
 void TelegramBotManager::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
+    auto *_t = static_cast<TelegramBotManager *>(_o);
     if (_c == QMetaObject::InvokeMetaMethod) {
-        auto *_t = static_cast<TelegramBotManager *>(_o);
-        (void)_t;
         switch (_id) {
         case 0: _t->logMessage((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2]))); break;
         case 1: _t->logMessage((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1]))); break;
@@ -869,7 +667,8 @@ void TelegramBotManager::qt_static_metacall(QObject *_o, QMetaObject::Call _c, i
         case 72: _t->refreshAdminsList(); break;
         default: ;
         }
-    } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
+    }
+    if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
         switch (_id) {
         default: *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType(); break;
         case 11:
@@ -894,46 +693,47 @@ void TelegramBotManager::qt_static_metacall(QObject *_o, QMetaObject::Call _c, i
             }
             break;
         }
-    } else if (_c == QMetaObject::IndexOfMethod) {
+    }
+    if (_c == QMetaObject::IndexOfMethod) {
         int *result = reinterpret_cast<int *>(_a[0]);
         {
-            using _t = void (TelegramBotManager::*)(const QString & , const QString & );
-            if (_t _q_method = &TelegramBotManager::logMessage; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (TelegramBotManager::*)(const QString & , const QString & );
+            if (_q_method_type _q_method = &TelegramBotManager::logMessage; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 0;
                 return;
             }
         }
         {
-            using _t = void (TelegramBotManager::*)(bool );
-            if (_t _q_method = &TelegramBotManager::statusChanged; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (TelegramBotManager::*)(bool );
+            if (_q_method_type _q_method = &TelegramBotManager::statusChanged; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 2;
                 return;
             }
         }
         {
-            using _t = void (TelegramBotManager::*)(const QString & );
-            if (_t _q_method = &TelegramBotManager::clientCreated; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (TelegramBotManager::*)(const QString & );
+            if (_q_method_type _q_method = &TelegramBotManager::clientCreated; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 3;
                 return;
             }
         }
         {
-            using _t = void (TelegramBotManager::*)(const QString & );
-            if (_t _q_method = &TelegramBotManager::clientRevoked; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (TelegramBotManager::*)(const QString & );
+            if (_q_method_type _q_method = &TelegramBotManager::clientRevoked; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 4;
                 return;
             }
         }
         {
-            using _t = void (TelegramBotManager::*)();
-            if (_t _q_method = &TelegramBotManager::clientsChanged; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (TelegramBotManager::*)();
+            if (_q_method_type _q_method = &TelegramBotManager::clientsChanged; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 5;
                 return;
             }
         }
         {
-            using _t = void (TelegramBotManager::*)();
-            if (_t _q_method = &TelegramBotManager::caGenerated; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (TelegramBotManager::*)();
+            if (_q_method_type _q_method = &TelegramBotManager::caGenerated; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 6;
                 return;
             }
@@ -949,7 +749,7 @@ const QMetaObject *TelegramBotManager::metaObject() const
 void *TelegramBotManager::qt_metacast(const char *_clname)
 {
     if (!_clname) return nullptr;
-    if (!strcmp(_clname, qt_meta_stringdata_TelegramBotManager.stringdata0))
+    if (!strcmp(_clname, qt_meta_stringdata_ZN18TelegramBotManagerE.stringdata0))
         return static_cast<void*>(this);
     return QObject::qt_metacast(_clname);
 }
@@ -963,7 +763,8 @@ int TelegramBotManager::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
         if (_id < 73)
             qt_static_metacall(this, _c, _id, _a);
         _id -= 73;
-    } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
+    }
+    if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
         if (_id < 73)
             qt_static_metacall(this, _c, _id, _a);
         _id -= 73;
@@ -1011,4 +812,3 @@ void TelegramBotManager::caGenerated()
     QMetaObject::activate(this, &staticMetaObject, 6, nullptr);
 }
 QT_WARNING_POP
-QT_END_MOC_NAMESPACE

@@ -1,4 +1,5 @@
-/workspace/build/CMakeFiles/TorManager.dir
-/workspace/build/CMakeFiles/edit_cache.dir
-/workspace/build/CMakeFiles/rebuild_cache.dir
-/workspace/build/CMakeFiles/TorManager_autogen.dir
+/home/skliff/Proekt/tor/deamon/test/3/build/CMakeFiles/TorManager.dir
+/home/skliff/Proekt/tor/deamon/test/3/build/CMakeFiles/edit_cache.dir
+/home/skliff/Proekt/tor/deamon/test/3/build/CMakeFiles/rebuild_cache.dir
+/home/skliff/Proekt/tor/deamon/test/3/build/CMakeFiles/TorManager_autogen_timestamp_deps.dir
+/home/skliff/Proekt/tor/deamon/test/3/build/CMakeFiles/TorManager_autogen.dir

@@ -431,6 +431,12 @@ MainWindow::MainWindow(QWidget *parent)
     clientsRefreshTimer = new QTimer(this);
     realtimeTimer = new QTimer(this);
 
+    // FIX #1: logFlushTimer не был подключён — журналы не отображались
+    logFlushTimer = new QTimer(this);
+    logFlushTimer->setInterval(500);
+    connect(logFlushTimer, &QTimer::timeout, this, &MainWindow::flushLogs);
+    logFlushTimer->start();
+
     // Инициализация Telegram бота
     tgBotManager = new TelegramBotManager(settings, this);
 
@@ -445,11 +451,18 @@ MainWindow::MainWindow(QWidget *parent)
     connect(mtproxyManager, &MTProxyManager::proxyStopped, this, &MainWindow::onMTProxyStopped);
     connect(mtproxyManager, &MTProxyManager::logMessage, this, &MainWindow::onMTProxyLog);
 
-    // Поиск пути к mtproto-proxy
+    // Поиск пути к mtproto-proxy (расширенный список)
     QStringList mtprotoPaths = {
         "/usr/bin/mtproto-proxy",
         "/usr/local/bin/mtproto-proxy",
-        "/tmp/MTProxy/objs/bin/mtproto-proxy"
+        "/tmp/MTProxy/objs/bin/mtproto-proxy",
+        "/tmp/MTProxy_build/objs/bin/mtproto-proxy",
+        QDir::homePath() + "/MTProxy/objs/bin/mtproto-proxy",
+        QDir::homePath() + "/Загрузки/MTProxy/objs/bin/mtproto-proxy",
+        QDir::homePath() + "/Downloads/MTProxy/objs/bin/mtproto-proxy",
+        QDir::homePath() + "/.local/bin/mtproto-proxy",
+        "/opt/MTProxy/mtproto-proxy",
+        "/opt/MTProxy/objs/bin/mtproto-proxy"
     };
 
     for (const QString &path : mtprotoPaths) {
@@ -458,6 +471,11 @@ MainWindow::MainWindow(QWidget *parent)
             addLogMessage("MTProto-Proxy найден: " + path, "success");
             break;
         }
+    }
+
+    // FIX #2: warn if mtproto-proxy not found
+    if (mtproxyManager->getExecutablePath().isEmpty()) {
+        addLogMessage("[MTProxy] mtproto-proxy binary not found. Use the Install button in the MTProxy tab.", "warning");
     }
 
     // Установка путей
@@ -7848,7 +7866,16 @@ void MainWindow::startMTProxy()
     QSettings settings("TorManager", "MTProxy");
     int port = settings.value("port", 443).toInt();
     QString secret = settings.value("secret").toString();
-    
+
+    // FIX: если сохранён старый 64-символьный секрет — сбрасываем
+    // mtproto-proxy принимает ровно 32 hex символа
+    bool isDD = secret.startsWith("dd") || secret.startsWith("DD");
+    int expectedLen = isDD ? 34 : 32;
+    if (!secret.isEmpty() && secret.length() != expectedLen) {
+        addLogMessage(QString("Старый секрет неверной длины (%1 символов), генерируем новый").arg(secret.length()), "warning");
+        secret.clear();
+    }
+
     if (secret.isEmpty()) {
         secret = MTProxyManager::generateSecureSecret();
         settings.setValue("secret", secret);

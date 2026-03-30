@@ -94,6 +94,7 @@ bool MTProxyManager::initDatabase()
     "connected_at DATETIME NOT NULL,"
     "disconnected_at DATETIME,"
     "duration_seconds INTEGER DEFAULT 0,"
+    "last_activity DATETIME,"
     "telegram_version TEXT,"
     "device_model TEXT,"
     "os_version TEXT,"
@@ -138,17 +139,98 @@ bool MTProxyManager::startProxy(int port, const QString &secret)
         return false;
     }
 
-    // Подготовка аргументов
-    QStringList args;
-    args << "--port" << QString::number(port);
-    args << "--secret" << currentSecret;
-    args << "--nat-info" << "0.0.0.0:0" << "0.0.0.0:0";
-    args << "--allow-skip-dh" << "--no-dh";
+    // FIX #3: исправлены аргументы CLI — официальный синтаксис mtproto-proxy
+    // Загружаем proxy-secret и конфиг если есть
+    QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString proxySecretPath = appData + "/proxy-secret";
+    QString proxyConfPath   = appData + "/proxy-multi.conf";
 
-    // Дополнительные настройки для лучшей производительности
-    args << "--max-connections" << "10000";
-    args << "--max-special-connections" << "1000";
-    args << "--workers" << "4";
+    // Скачиваем файлы конфигурации если их нет — асинхронно чтобы не блокировать GUI
+    if (!QFile::exists(proxySecretPath) || !QFile::exists(proxyConfPath)) {
+        emit logMessage("Загрузка proxy-secret и proxy-multi.conf (асинхронно)...", "info");
+        // Запускаем скачивание в отдельном потоке, повторно вызываем startProxy после
+        QString psp = proxySecretPath, pcp = proxyConfPath;
+        int savedPort = port; QString savedSecret = currentSecret;
+        QThread *dlThread = QThread::create([this, psp, pcp, savedPort, savedSecret]() {
+
+        // FIX: скачиваем через SOCKS5 Tor (порт 9050), т.к. весь трафик
+        // может быть перехвачен TransPort. Пробуем сначала прямо, потом через Tor.
+        auto download = [this](const QString &url, const QString &dest,
+                                bool useTor) -> bool {
+            QProcess dl;
+            QStringList args;
+            args << "-s" << "--max-time" << "15" << "-o" << dest;
+            if (useTor) {
+                args << "--socks5-hostname" << "127.0.0.1:9050";
+            }
+            args << url;
+            dl.start("curl", args);
+            if (!dl.waitForFinished(20000)) {
+                dl.kill();
+                emit logMessage((useTor ? "[Tor] " : "[Direct] ") +
+                                QString("Таймаут скачивания: ") + url, "warning");
+                return false;
+            }
+            if (dl.exitCode() != 0) {
+                emit logMessage((useTor ? "[Tor] " : "[Direct] ") +
+                                QString("curl ошибка %1: ").arg(dl.exitCode()) +
+                                QString::fromUtf8(dl.readAllStandardError()).trimmed(), "warning");
+                return false;
+            }
+            if (!QFile::exists(dest) || QFileInfo(dest).size() == 0) {
+                emit logMessage("Файл не скачан или пустой: " + dest, "error");
+                return false;
+            }
+            return true;
+        };
+
+        // Пробуем прямое соединение, затем через Tor SOCKS5
+        auto tryDownload = [&](const QString &url, const QString &dest) -> bool {
+            emit logMessage("Скачивание: " + url, "info");
+            if (download(url, dest, false)) return true;
+            emit logMessage("Прямое соединение не удалось, пробуем через Tor...", "warning");
+            if (download(url, dest, true)) return true;
+            emit logMessage("Не удалось скачать: " + url, "error");
+            return false;
+        };
+
+        bool ok1 = tryDownload("https://core.telegram.org/getProxySecret", proxySecretPath);
+        bool ok2 = tryDownload("https://core.telegram.org/getProxyConfig",  proxyConfPath);
+
+            if (!ok1 || !ok2) {
+                emit logMessage("Не удалось скачать конфигурацию Telegram.", "error");
+                emit logMessage("Подсказка: убедитесь что curl установлен и есть доступ в интернет.", "warning");
+                return;
+            }
+            emit logMessage("proxy-secret и proxy-multi.conf успешно загружены", "success");
+            // Повторно запускаем прокси теперь когда файлы есть
+            QMetaObject::invokeMethod(this, [this, savedPort, savedSecret]() {
+                startProxy(savedPort, savedSecret);
+            }, Qt::QueuedConnection);
+        });
+        dlThread->start();
+        connect(dlThread, &QThread::finished, dlThread, &QThread::deleteLater);
+        return false; // выходим сейчас, startProxy повторится после скачивания
+    }
+
+    QStringList args;
+    args << "-u" << "nobody";
+    args << "-p" << "8888";                      // порт статистики (localhost)
+    args << "-H" << QString::number(port);       // порт для клиентов
+    args << "-S" << currentSecret;
+    args << "-M" << "1";                         // воркеры
+    // FIX: --aes-pwd принимает только proxy-secret,
+    // proxy-multi.conf передаётся как позиционный аргумент <config-file>
+    if (QFile::exists(proxySecretPath)) {
+        args << "--aes-pwd" << proxySecretPath;
+    }
+    if (QFile::exists(proxyConfPath)) {
+        args << proxyConfPath;  // positional <config-file>
+    } else {
+        emit logMessage("proxy-multi.conf не найден: " + proxyConfPath, "error");
+        emit logMessage("Попытка скачать конфиг повторно...", "warning");
+        return false;
+    }
 
     emit logMessage("Запуск MTProxy на порту " + QString::number(port), "info");
     emit logMessage("Секрет: " + currentSecret, "info");
@@ -537,6 +619,7 @@ void MTProxyManager::updateClientInDatabase(const MTProxyClient &client)
     if (!dbInitialized) return;
 
     QSqlQuery query(db);
+    // FIX #5: last_activity добавлена в схему таблицы
     query.prepare(
         "UPDATE connections SET bytes_received=?, bytes_sent=?, last_activity=? WHERE id=?"
     );
@@ -544,22 +627,39 @@ void MTProxyManager::updateClientInDatabase(const MTProxyClient &client)
     query.addBindValue(client.bytesSent);
     query.addBindValue(QDateTime::currentDateTime().toString(Qt::ISODate));
     query.addBindValue(client.connectionId);
-    query.exec();
+    if (!query.exec()) {
+        emit logMessage("updateClientInDatabase error: " + query.lastError().text(), "error");
+    }
 }
 
 void MTProxyManager::closeClientInDatabase(const QString &connectionId)
 {
     if (!dbInitialized) return;
 
+    // FIX #4: JULIANDAY(disconnected_at) был NULL т.к. поле ещё не записано —
+    // duration_seconds всегда равнялся 0. Теперь вычисляем в C++.
+    QSqlQuery sel(db);
+    sel.prepare("SELECT connected_at FROM connections WHERE id=?");
+    sel.addBindValue(connectionId);
+    sel.exec();
+
+    qint64 durationSecs = 0;
+    if (sel.next()) {
+        QDateTime connectedAt = QDateTime::fromString(sel.value(0).toString(), Qt::ISODate);
+        if (connectedAt.isValid())
+            durationSecs = connectedAt.secsTo(QDateTime::currentDateTime());
+    }
+
     QSqlQuery query(db);
     query.prepare(
-        "UPDATE connections SET disconnected_at=?, "
-        "duration_seconds=(JULIANDAY(disconnected_at)-JULIANDAY(connected_at))*86400 "
-        "WHERE id=?"
+        "UPDATE connections SET disconnected_at=?, duration_seconds=? WHERE id=?"
     );
     query.addBindValue(QDateTime::currentDateTime().toString(Qt::ISODate));
+    query.addBindValue(durationSecs);
     query.addBindValue(connectionId);
-    query.exec();
+    if (!query.exec()) {
+        emit logMessage("closeClientInDatabase error: " + query.lastError().text(), "error");
+    }
 }
 
 QList<MTProxyClient> MTProxyManager::getActiveClients() const
@@ -600,6 +700,9 @@ QList<MTProxyClient> MTProxyManager::getClientHistory(int limit) const
         client.bytesReceived = query.value(8).toLongLong();
         client.bytesSent = query.value(9).toLongLong();
         client.connectedSince = QDateTime::fromString(query.value(10).toString(), Qt::ISODate);
+        // FIX #6: читаем disconnected_at (индекс 11) и duration_seconds (индекс 12)
+        client.disconnectedAt = QDateTime::fromString(query.value(11).toString(), Qt::ISODate);
+        client.durationSeconds = query.value(12).toLongLong();
         client.isActive = false;
         client.proxyPort = query.value(13).toInt();
         history.append(client);
@@ -637,9 +740,10 @@ QString MTProxyManager::generateSecret()
 
 QString MTProxyManager::generateSecureSecret()
 {
-    // Более безопасный секрет с дополнительной энтропией
-    QByteArray secret(32, 0);
-    for (int i = 0; i < 32; i++) {
+    // FIX: mtproto-proxy требует ровно 32 hex символа (16 байт)
+    // Было 32 байта = 64 hex → ошибка "'S' option requires exactly 32 hex digits"
+    QByteArray secret(16, 0);
+    for (int i = 0; i < 16; i++) {
         secret[i] = static_cast<char>(QRandomGenerator::global()->bounded(256));
     }
     return secret.toHex();
@@ -647,10 +751,16 @@ QString MTProxyManager::generateSecureSecret()
 
 bool MTProxyManager::validateSecret(const QString &secret)
 {
-    // Секрет должен быть hex строкой чётной длины (16-64 символа)
+    // FIX: mtproto-proxy принимает ровно 32 hex символа (16 байт)
+    // Также допускается dd-префикс (random padding): "dd" + 32 hex = 34 символа
     if (secret.isEmpty()) return false;
-    if (secret.length() % 2 != 0) return false;
-    if (secret.length() < 16 || secret.length() > 64) return false;
+
+    QString s = secret;
+    if (s.startsWith("dd") || s.startsWith("DD")) {
+        s = s.mid(2); // убираем префикс для проверки длины
+    }
+
+    if (s.length() != 32) return false;
 
     static QRegularExpression hexRe("^[0-9a-fA-F]+$");
     return hexRe.match(secret).hasMatch();
@@ -757,6 +867,11 @@ void MTProxyWidget::setupUI()
     btnGenerateSecret = new QPushButton("🎲 Генерация");
     controlLayout->addWidget(btnGenerateSecret, 0, 5);
 
+    // FIX #2: кнопка установки бинарника mtproto-proxy
+    btnInstallMTProxy = new QPushButton("⚙️ Установить MTProxy");
+    btnInstallMTProxy->setToolTip("Скачать и собрать mtproto-proxy из исходников GitHub");
+    controlLayout->addWidget(btnInstallMTProxy, 1, 5, 1, 2);
+
     btnStartStop = new QPushButton("▶ Запустить");
     btnStartStop->setStyleSheet("QPushButton { background: #27ae60; color: white; font-weight: bold; }");
     controlLayout->addWidget(btnStartStop, 0, 6);
@@ -857,6 +972,7 @@ void MTProxyWidget::setupUI()
     // ==================== Подключение сигналов ====================
     connect(btnStartStop, &QPushButton::clicked, this, &MTProxyWidget::onStartStopClicked);
     connect(btnGenerateSecret, &QPushButton::clicked, this, &MTProxyWidget::onGenerateSecret);
+    connect(btnInstallMTProxy, &QPushButton::clicked, this, &MTProxyWidget::onInstallMTProxy);
     connect(btnCopyLink, &QPushButton::clicked, this, &MTProxyWidget::onCopyLink);
     connect(btnRefresh, &QPushButton::clicked, this, &MTProxyWidget::refreshData);
     connect(btnExport, &QPushButton::clicked, this, &MTProxyWidget::onExportCSV);
@@ -901,8 +1017,11 @@ void MTProxyWidget::refreshData()
         historyTable->setItem(i, 1, new QTableWidgetItem(c.country.isEmpty() ? "—" : c.country));
         historyTable->setItem(i, 2, new QTableWidgetItem(
             c.connectedSince.toString("dd.MM HH:mm:ss")));
-        historyTable->setItem(i, 3, new QTableWidgetItem("—")); // Время отключения
-        historyTable->setItem(i, 4, new QTableWidgetItem(fmtDuration(c.bytesReceived / 1024)));
+        // FIX #6: было "—" — теперь показываем реальное время отключения
+        historyTable->setItem(i, 3, new QTableWidgetItem(
+            c.disconnectedAt.isValid() ? c.disconnectedAt.toString("dd.MM HH:mm:ss") : "—"));
+        // FIX #6: было fmtDuration(c.bytesReceived/1024) — трафик вместо времени!
+        historyTable->setItem(i, 4, new QTableWidgetItem(fmtDuration(c.durationSeconds)));
         historyTable->setItem(i, 5, new QTableWidgetItem(
             QString("%1 / %2").arg(fmtBytes(c.bytesReceived), fmtBytes(c.bytesSent))));
         historyTable->setItem(i, 6, new QTableWidgetItem(QString::number(c.proxyPort)));
@@ -1179,10 +1298,20 @@ void MTProxyWidget::banClientIP()
 void MTProxyWidget::loadSettings()
 {
     if (!edtPort || !edtSecret) return;
-    
+
     QSettings settings("TorManager", "MTProxy");
     edtPort->setText(settings.value("port", "443").toString());
-    edtSecret->setText(settings.value("secret").toString());
+
+    QString secret = settings.value("secret").toString();
+    // FIX: сбрасываем секрет неверной длины (старый 64-символьный)
+    bool isDD = secret.startsWith("dd") || secret.startsWith("DD");
+    int expectedLen = isDD ? 34 : 32;
+    if (!secret.isEmpty() && secret.length() != expectedLen) {
+        secret = MTProxyManager::generateSecureSecret();
+        settings.setValue("secret", secret);
+        settings.sync();
+    }
+    edtSecret->setText(secret);
 }
 
 void MTProxyWidget::saveSettings()
@@ -1221,4 +1350,79 @@ void MTProxyWidget::onStatsUpdated(const MTProxyStats &stats)
 {
     Q_UNUSED(stats)
     updateStatsDisplay();
+}
+
+// FIX #2: установка mtproto-proxy из исходников
+void MTProxyWidget::onInstallMTProxy()
+{
+    int ret = QMessageBox::question(this, "Установить MTProxy",
+        "Будет выполнена сборка mtproto-proxy из исходников GitHub.\n"
+        "Потребуется: git, make, gcc, libssl-dev, zlib1g-dev.\n\n"
+        "Продолжить?", QMessageBox::Yes | QMessageBox::No);
+    if (ret != QMessageBox::Yes) return;
+
+    btnInstallMTProxy->setEnabled(false);
+    btnInstallMTProxy->setText("⏳ Сборка...");
+
+    // Если уже собран в ~/Загрузки/MTProxy — просто копируем, не клонируем заново
+    QString existingBin;
+    QStringList knownBuilt = {
+        QDir::homePath() + "/Загрузки/MTProxy/objs/bin/mtproto-proxy",
+        QDir::homePath() + "/Downloads/MTProxy/objs/bin/mtproto-proxy",
+        "/tmp/MTProxy_build/objs/bin/mtproto-proxy",
+        "/tmp/MTProxy/objs/bin/mtproto-proxy"
+    };
+    for (const QString &p : knownBuilt) {
+        if (QFile::exists(p)) { existingBin = p; break; }
+    }
+
+    QString script;
+    if (!existingBin.isEmpty()) {
+        // Бинарник уже есть — просто копируем
+        script = QString(
+            "set -e\n"
+            "cp \'%1\' /usr/local/bin/mtproto-proxy\n"
+            "chmod +x /usr/local/bin/mtproto-proxy\n"
+        ).arg(existingBin);
+        emit proxyManager->logMessage("Найден готовый бинарник: " + existingBin + " — копирую...", "info");
+    } else {
+        // Собираем из исходников
+        script =
+            "set -e\n"
+            "apt-get install -y git build-essential libssl-dev zlib1g-dev 2>/dev/null || true\n"
+            "rm -rf /tmp/MTProxy_build\n"
+            "git clone --depth 1 https://github.com/TelegramMessenger/MTProxy /tmp/MTProxy_build\n"
+            "cd /tmp/MTProxy_build && make -j$(nproc)\n"
+            "cp /tmp/MTProxy_build/objs/bin/mtproto-proxy /usr/local/bin/mtproto-proxy\n"
+            "chmod +x /usr/local/bin/mtproto-proxy\n";
+    }
+
+    QProcess *proc = new QProcess(this);
+    proc->setProcessChannelMode(QProcess::MergedChannels);
+    proc->start("pkexec", {"bash", "-c", script});
+
+    connect(proc, &QProcess::readyReadStandardOutput, this, [proc, this]() {
+        QString out = QString::fromUtf8(proc->readAllStandardOutput());
+        // forward to main log via proxyManager signal
+        emit proxyManager->logMessage(out.trimmed(), "info");
+    });
+
+    connect(proc, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
+            this, [this, proc](int code, QProcess::ExitStatus) {
+        btnInstallMTProxy->setEnabled(true);
+        btnInstallMTProxy->setText("⚙️ Установить MTProxy");
+        if (code == 0) {
+            proxyManager->setExecutablePath("/usr/local/bin/mtproto-proxy");
+            QMessageBox::information(this, "Готово",
+                "mtproto-proxy успешно установлен в /usr/local/bin/\n"
+                "Теперь можно запустить прокси.");
+            emit proxyManager->logMessage("mtproto-proxy установлен: /usr/local/bin/mtproto-proxy", "success");
+        } else {
+            QString err = QString::fromUtf8(proc->readAllStandardError());
+            QMessageBox::warning(this, "Ошибка сборки",
+                "Сборка завершилась с ошибкой (код " + QString::number(code) + ").\n\n" + err.left(500));
+            emit proxyManager->logMessage("Ошибка установки mtproto-proxy (код " + QString::number(code) + ")", "error");
+        }
+        proc->deleteLater();
+    });
 }

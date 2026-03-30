@@ -1,4 +1,5 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/TorManager.dir/link.d"
   "CMakeFiles/TorManager_autogen.dir/AutogenUsed.txt"
   "CMakeFiles/TorManager_autogen.dir/ParseCache.txt"
   "TorManager_autogen"
@@ -18,6 +19,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/TorManager.dir/tgbot_manager.cpp.o.d"
   "TorManager"
   "TorManager.pdb"
+  "TorManager_autogen/mocs_compilation.cpp"
+  "TorManager_autogen/timestamp"
 )
 
 # Per-language clean rules from dependency scanning.

@@ -12,6 +12,8 @@
 #include <QDateTime>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QThread>
+#include <QFileInfo>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
@@ -51,6 +53,8 @@ struct MTProxyClient {
     QString osVersion;          // Версия ОС
     bool isActive;              // Активно ли соединение
     int proxyPort;              // Порт прокси (если несколько)
+    qint64 durationSeconds = 0; // FIX #6: длительность сессии в секундах
+    QDateTime disconnectedAt;   // FIX #6: время отключения
 };
 
 /**
@@ -97,6 +101,7 @@ public:
 
     // Настройка
     void setExecutablePath(const QString &path) { mtprotoPath = path; }
+    QString getExecutablePath() const { return mtprotoPath; }
     void setConfigPath(const QString &path) { configPath = path; }
     void setSecret(const QString &secret);
     QString getSecret() const { return currentSecret; }
@@ -220,6 +225,7 @@ private slots:
     void onGenerateSecret();
     void onCopyLink();
     void onExportCSV();
+    void onInstallMTProxy(); // FIX #2
     void onClientTableContextMenu(const QPoint &pos);
     void showClientDetails();
     void banClientIP();
@@ -238,6 +244,7 @@ private:
     QLineEdit *edtSecret = nullptr;
     QPushButton *btnStartStop = nullptr;
     QPushButton *btnGenerateSecret = nullptr;
+    QPushButton *btnInstallMTProxy = nullptr; // FIX #2
     QPushButton *btnCopyLink = nullptr;
     QLabel *lblStatus = nullptr;
     QLabel *lblProxyLink = nullptr;

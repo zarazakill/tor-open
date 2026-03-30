@@ -1,20 +1,26 @@
 /****************************************************************************
 ** Meta object code from reading C++ file 'mainwindow.h'
 **
-** Created by: The Qt Meta Object Compiler version 68 (Qt 6.4.2)
+** Created by: The Qt Meta Object Compiler version 68 (Qt 6.8.2)
 **
 ** WARNING! All changes made in this file will be lost!
 *****************************************************************************/
 
-#include <memory>
 #include "../../../mainwindow.h"
 #include <QtGui/qtextcursor.h>
 #include <QtNetwork/QSslError>
 #include <QtCore/qmetatype.h>
+
+#include <QtCore/qtmochelpers.h>
+
+#include <memory>
+
+
+#include <QtCore/qxptype_traits.h>
 #if !defined(Q_MOC_OUTPUT_REVISION)
 #error "The header file 'mainwindow.h' doesn't include <QObject>."
 #elif Q_MOC_OUTPUT_REVISION != 68
-#error "This file was generated using the moc from 6.4.2. It"
+#error "This file was generated using the moc from 6.8.2. It"
 #error "cannot be used with the include files from this version of Qt."
 #error "(The moc has changed too much.)"
 #endif
@@ -23,54 +29,16 @@
 #define Q_CONSTINIT
 #endif
 
-QT_BEGIN_MOC_NAMESPACE
 QT_WARNING_PUSH
 QT_WARNING_DISABLE_DEPRECATED
+QT_WARNING_DISABLE_GCC("-Wuseless-cast")
 namespace {
-struct qt_meta_stringdata_CertificateGenerator_t {
-    uint offsetsAndSizes[36];
-    char stringdata0[21];
-    char stringdata1[11];
-    char stringdata2[1];
-    char stringdata3[8];
-    char stringdata4[5];
-    char stringdata5[9];
-    char stringdata6[8];
-    char stringdata7[9];
-    char stringdata8[8];
-    char stringdata9[18];
-    char stringdata10[9];
-    char stringdata11[21];
-    char stringdata12[11];
-    char stringdata13[15];
-    char stringdata14[23];
-    char stringdata15[6];
-    char stringdata16[16];
-    char stringdata17[21];
-};
-#define QT_MOC_LITERAL(ofs, len) \
-    uint(sizeof(qt_meta_stringdata_CertificateGenerator_t::offsetsAndSizes) + ofs), len 
-Q_CONSTINIT static const qt_meta_stringdata_CertificateGenerator_t qt_meta_stringdata_CertificateGenerator = {
-    {
-        QT_MOC_LITERAL(0, 20),  // "CertificateGenerator"
-        QT_MOC_LITERAL(21, 10),  // "logMessage"
-        QT_MOC_LITERAL(32, 0),  // ""
-        QT_MOC_LITERAL(33, 7),  // "message"
-        QT_MOC_LITERAL(41, 4),  // "type"
-        QT_MOC_LITERAL(46, 8),  // "finished"
-        QT_MOC_LITERAL(55, 7),  // "success"
-        QT_MOC_LITERAL(63, 8),  // "progress"
-        QT_MOC_LITERAL(72, 7),  // "percent"
-        QT_MOC_LITERAL(80, 17),  // "onProcessFinished"
-        QT_MOC_LITERAL(98, 8),  // "exitCode"
-        QT_MOC_LITERAL(107, 20),  // "QProcess::ExitStatus"
-        QT_MOC_LITERAL(128, 10),  // "exitStatus"
-        QT_MOC_LITERAL(139, 14),  // "onProcessError"
-        QT_MOC_LITERAL(154, 22),  // "QProcess::ProcessError"
-        QT_MOC_LITERAL(177, 5),  // "error"
-        QT_MOC_LITERAL(183, 15),  // "onProcessOutput"
-        QT_MOC_LITERAL(199, 20)   // "onProcessErrorOutput"
-    },
+struct qt_meta_tag_ZN20CertificateGeneratorE_t {};
+} // unnamed namespace
+
+
+#ifdef QT_MOC_HAS_STRINGDATA
+static constexpr auto qt_meta_stringdata_ZN20CertificateGeneratorE = QtMocHelpers::stringData(
     "CertificateGenerator",
     "logMessage",
     "",
@@ -89,14 +57,15 @@ Q_CONSTINIT static const qt_meta_stringdata_CertificateGenerator_t qt_meta_strin
     "error",
     "onProcessOutput",
     "onProcessErrorOutput"
-};
-#undef QT_MOC_LITERAL
-} // unnamed namespace
+);
+#else  // !QT_MOC_HAS_STRINGDATA
+#error "qtmochelpers.h not found or too old."
+#endif // !QT_MOC_HAS_STRINGDATA
 
-Q_CONSTINIT static const uint qt_meta_data_CertificateGenerator[] = {
+Q_CONSTINIT static const uint qt_meta_data_ZN20CertificateGeneratorE[] = {
 
  // content:
-      10,       // revision
+      12,       // revision
        0,       // classname
        0,    0, // classinfo
        7,   14, // methods
@@ -133,11 +102,11 @@ Q_CONSTINIT static const uint qt_meta_data_CertificateGenerator[] = {
 
 Q_CONSTINIT const QMetaObject CertificateGenerator::staticMetaObject = { {
     QMetaObject::SuperData::link<QObject::staticMetaObject>(),
-    qt_meta_stringdata_CertificateGenerator.offsetsAndSizes,
-    qt_meta_data_CertificateGenerator,
+    qt_meta_stringdata_ZN20CertificateGeneratorE.offsetsAndSizes,
+    qt_meta_data_ZN20CertificateGeneratorE,
     qt_static_metacall,
     nullptr,
-    qt_incomplete_metaTypeArray<qt_meta_stringdata_CertificateGenerator_t,
+    qt_incomplete_metaTypeArray<qt_meta_tag_ZN20CertificateGeneratorE_t,
         // Q_OBJECT / Q_GADGET
         QtPrivate::TypeAndForceComplete<CertificateGenerator, std::true_type>,
         // method 'logMessage'
@@ -167,9 +136,8 @@ Q_CONSTINIT const QMetaObject CertificateGenerator::staticMetaObject = { {
 
 void CertificateGenerator::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
+    auto *_t = static_cast<CertificateGenerator *>(_o);
     if (_c == QMetaObject::InvokeMetaMethod) {
-        auto *_t = static_cast<CertificateGenerator *>(_o);
-        (void)_t;
         switch (_id) {
         case 0: _t->logMessage((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2]))); break;
         case 1: _t->finished((*reinterpret_cast< std::add_pointer_t<bool>>(_a[1]))); break;
@@ -180,25 +148,26 @@ void CertificateGenerator::qt_static_metacall(QObject *_o, QMetaObject::Call _c,
         case 6: _t->onProcessErrorOutput(); break;
         default: ;
         }
-    } else if (_c == QMetaObject::IndexOfMethod) {
+    }
+    if (_c == QMetaObject::IndexOfMethod) {
         int *result = reinterpret_cast<int *>(_a[0]);
         {
-            using _t = void (CertificateGenerator::*)(const QString & , const QString & );
-            if (_t _q_method = &CertificateGenerator::logMessage; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (CertificateGenerator::*)(const QString & , const QString & );
+            if (_q_method_type _q_method = &CertificateGenerator::logMessage; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 0;
                 return;
             }
         }
         {
-            using _t = void (CertificateGenerator::*)(bool );
-            if (_t _q_method = &CertificateGenerator::finished; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (CertificateGenerator::*)(bool );
+            if (_q_method_type _q_method = &CertificateGenerator::finished; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 1;
                 return;
             }
         }
         {
-            using _t = void (CertificateGenerator::*)(int );
-            if (_t _q_method = &CertificateGenerator::progress; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (CertificateGenerator::*)(int );
+            if (_q_method_type _q_method = &CertificateGenerator::progress; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 2;
                 return;
             }
@@ -214,7 +183,7 @@ const QMetaObject *CertificateGenerator::metaObject() const
 void *CertificateGenerator::qt_metacast(const char *_clname)
 {
     if (!_clname) return nullptr;
-    if (!strcmp(_clname, qt_meta_stringdata_CertificateGenerator.stringdata0))
+    if (!strcmp(_clname, qt_meta_stringdata_ZN20CertificateGeneratorE.stringdata0))
         return static_cast<void*>(this);
     return QObject::qt_metacast(_clname);
 }
@@ -228,7 +197,8 @@ int CertificateGenerator::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
         if (_id < 7)
             qt_static_metacall(this, _c, _id, _a);
         _id -= 7;
-    } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
+    }
+    if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
         if (_id < 7)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
         _id -= 7;
@@ -257,274 +227,12 @@ void CertificateGenerator::progress(int _t1)
     QMetaObject::activate(this, &staticMetaObject, 2, _a);
 }
 namespace {
-struct qt_meta_stringdata_MainWindow_t {
-    uint offsetsAndSizes[260];
-    char stringdata0[11];
-    char stringdata1[14];
-    char stringdata2[1];
-    char stringdata3[15];
-    char stringdata4[16];
-    char stringdata5[8];
-    char stringdata6[16];
-    char stringdata7[27];
-    char stringdata8[9];
-    char stringdata9[22];
-    char stringdata10[9];
-    char stringdata11[19];
-    char stringdata12[18];
-    char stringdata13[27];
-    char stringdata14[3];
-    char stringdata15[13];
-    char stringdata16[7];
-    char stringdata17[13];
-    char stringdata18[12];
-    char stringdata19[8];
-    char stringdata20[11];
-    char stringdata21[13];
-    char stringdata22[14];
-    char stringdata23[9];
-    char stringdata24[21];
-    char stringdata25[11];
-    char stringdata26[11];
-    char stringdata27[23];
-    char stringdata28[6];
-    char stringdata29[15];
-    char stringdata30[15];
-    char stringdata31[20];
-    char stringdata32[5];
-    char stringdata33[15];
-    char stringdata34[8];
-    char stringdata35[25];
-    char stringdata36[25];
-    char stringdata37[21];
-    char stringdata38[18];
-    char stringdata39[18];
-    char stringdata40[16];
-    char stringdata41[17];
-    char stringdata42[14];
-    char stringdata43[18];
-    char stringdata44[21];
-    char stringdata45[26];
-    char stringdata46[25];
-    char stringdata47[8];
-    char stringdata48[18];
-    char stringdata49[21];
-    char stringdata50[26];
-    char stringdata51[26];
-    char stringdata52[11];
-    char stringdata53[12];
-    char stringdata54[18];
-    char stringdata55[13];
-    char stringdata56[13];
-    char stringdata57[10];
-    char stringdata58[16];
-    char stringdata59[34];
-    char stringdata60[7];
-    char stringdata61[14];
-    char stringdata62[19];
-    char stringdata63[14];
-    char stringdata64[8];
-    char stringdata65[5];
-    char stringdata66[10];
-    char stringdata67[10];
-    char stringdata68[13];
-    char stringdata69[22];
-    char stringdata70[21];
-    char stringdata71[21];
-    char stringdata72[7];
-    char stringdata73[19];
-    char stringdata74[17];
-    char stringdata75[18];
-    char stringdata76[19];
-    char stringdata77[7];
-    char stringdata78[19];
-    char stringdata79[17];
-    char stringdata80[21];
-    char stringdata81[19];
-    char stringdata82[21];
-    char stringdata83[14];
-    char stringdata84[19];
-    char stringdata85[18];
-    char stringdata86[17];
-    char stringdata87[19];
-    char stringdata88[21];
-    char stringdata89[25];
-    char stringdata90[11];
-    char stringdata91[4];
-    char stringdata92[25];
-    char stringdata93[21];
-    char stringdata94[18];
-    char stringdata95[10];
-    char stringdata96[16];
-    char stringdata97[5];
-    char stringdata98[17];
-    char stringdata99[16];
-    char stringdata100[25];
-    char stringdata101[4];
-    char stringdata102[18];
-    char stringdata103[26];
-    char stringdata104[20];
-    char stringdata105[25];
-    char stringdata106[19];
-    char stringdata107[19];
-    char stringdata108[20];
-    char stringdata109[20];
-    char stringdata110[24];
-    char stringdata111[25];
-    char stringdata112[24];
-    char stringdata113[18];
-    char stringdata114[18];
-    char stringdata115[19];
-    char stringdata116[19];
-    char stringdata117[20];
-    char stringdata118[20];
-    char stringdata119[13];
-    char stringdata120[10];
-    char stringdata121[7];
-    char stringdata122[15];
-    char stringdata123[22];
-    char stringdata124[17];
-    char stringdata125[17];
-    char stringdata126[17];
-    char stringdata127[13];
-    char stringdata128[4];
-    char stringdata129[6];
-};
-#define QT_MOC_LITERAL(ofs, len) \
-    uint(sizeof(qt_meta_stringdata_MainWindow_t::offsetsAndSizes) + ofs), len 
-Q_CONSTINIT static const qt_meta_stringdata_MainWindow_t qt_meta_stringdata_MainWindow = {
-    {
-        QT_MOC_LITERAL(0, 10),  // "MainWindow"
-        QT_MOC_LITERAL(11, 13),  // "serverStarted"
-        QT_MOC_LITERAL(25, 0),  // ""
-        QT_MOC_LITERAL(26, 14),  // "clientsUpdated"
-        QT_MOC_LITERAL(41, 15),  // "torStateChanged"
-        QT_MOC_LITERAL(57, 7),  // "running"
-        QT_MOC_LITERAL(65, 15),  // "registryUpdated"
-        QT_MOC_LITERAL(81, 26),  // "QMap<QString,ClientRecord>"
-        QT_MOC_LITERAL(108, 8),  // "registry"
-        QT_MOC_LITERAL(117, 21),  // "clientRegistryChanged"
-        QT_MOC_LITERAL(139, 8),  // "startTor"
-        QT_MOC_LITERAL(148, 18),  // "startOpenVPNServer"
-        QT_MOC_LITERAL(167, 17),  // "getClientRegistry"
-        QT_MOC_LITERAL(185, 26),  // "updateRegistryFromTelegram"
-        QT_MOC_LITERAL(212, 2),  // "cn"
-        QT_MOC_LITERAL(215, 12),  // "ClientRecord"
-        QT_MOC_LITERAL(228, 6),  // "record"
-        QT_MOC_LITERAL(235, 12),  // "startMTProxy"
-        QT_MOC_LITERAL(248, 11),  // "stopMTProxy"
-        QT_MOC_LITERAL(260, 7),  // "stopTor"
-        QT_MOC_LITERAL(268, 10),  // "restartTor"
-        QT_MOC_LITERAL(279, 12),  // "onTorStarted"
-        QT_MOC_LITERAL(292, 13),  // "onTorFinished"
-        QT_MOC_LITERAL(306, 8),  // "exitCode"
-        QT_MOC_LITERAL(315, 20),  // "QProcess::ExitStatus"
-        QT_MOC_LITERAL(336, 10),  // "exitStatus"
-        QT_MOC_LITERAL(347, 10),  // "onTorError"
-        QT_MOC_LITERAL(358, 22),  // "QProcess::ProcessError"
-        QT_MOC_LITERAL(381, 5),  // "error"
-        QT_MOC_LITERAL(387, 14),  // "onTorReadyRead"
-        QT_MOC_LITERAL(402, 14),  // "checkTorStatus"
-        QT_MOC_LITERAL(417, 19),  // "parseTorCircuitLine"
-        QT_MOC_LITERAL(437, 4),  // "line"
-        QT_MOC_LITERAL(442, 14),  // "sendTorCommand"
-        QT_MOC_LITERAL(457, 7),  // "command"
-        QT_MOC_LITERAL(465, 24),  // "onControlSocketConnected"
-        QT_MOC_LITERAL(490, 24),  // "onControlSocketReadyRead"
-        QT_MOC_LITERAL(515, 20),  // "onControlSocketError"
-        QT_MOC_LITERAL(536, 17),  // "requestNewCircuit"
-        QT_MOC_LITERAL(554, 17),  // "stopOpenVPNServer"
-        QT_MOC_LITERAL(572, 15),  // "onServerStarted"
-        QT_MOC_LITERAL(588, 16),  // "onServerFinished"
-        QT_MOC_LITERAL(605, 13),  // "onServerError"
-        QT_MOC_LITERAL(619, 17),  // "onServerReadyRead"
-        QT_MOC_LITERAL(637, 20),  // "generateCertificates"
-        QT_MOC_LITERAL(658, 25),  // "generateCertificatesAsync"
-        QT_MOC_LITERAL(684, 24),  // "onCertGenerationFinished"
-        QT_MOC_LITERAL(709, 7),  // "success"
-        QT_MOC_LITERAL(717, 17),  // "checkCertificates"
-        QT_MOC_LITERAL(735, 20),  // "generateClientConfig"
-        QT_MOC_LITERAL(756, 25),  // "generateTestAndroidConfig"
-        QT_MOC_LITERAL(782, 25),  // "generateClientCertificate"
-        QT_MOC_LITERAL(808, 10),  // "clientName"
-        QT_MOC_LITERAL(819, 11),  // "checkIPLeak"
-        QT_MOC_LITERAL(831, 17),  // "onIPCheckFinished"
-        QT_MOC_LITERAL(849, 12),  // "updateStatus"
-        QT_MOC_LITERAL(862, 12),  // "showSettings"
-        QT_MOC_LITERAL(875, 9),  // "showAbout"
-        QT_MOC_LITERAL(885, 15),  // "onTrayActivated"
-        QT_MOC_LITERAL(901, 33),  // "QSystemTrayIcon::ActivationRe..."
-        QT_MOC_LITERAL(935, 6),  // "reason"
-        QT_MOC_LITERAL(942, 13),  // "applySettings"
-        QT_MOC_LITERAL(956, 18),  // "updateTrafficStats"
-        QT_MOC_LITERAL(975, 13),  // "addLogMessage"
-        QT_MOC_LITERAL(989, 7),  // "message"
-        QT_MOC_LITERAL(997, 4),  // "type"
-        QT_MOC_LITERAL(1002, 9),  // "flushLogs"
-        QT_MOC_LITERAL(1012, 9),  // "addBridge"
-        QT_MOC_LITERAL(1022, 12),  // "removeBridge"
-        QT_MOC_LITERAL(1035, 21),  // "importBridgesFromText"
-        QT_MOC_LITERAL(1057, 20),  // "validateBridgeFormat"
-        QT_MOC_LITERAL(1078, 20),  // "testBridgeConnection"
-        QT_MOC_LITERAL(1099, 6),  // "bridge"
-        QT_MOC_LITERAL(1106, 18),  // "updateBridgeConfig"
-        QT_MOC_LITERAL(1125, 16),  // "enableKillSwitch"
-        QT_MOC_LITERAL(1142, 17),  // "disableKillSwitch"
-        QT_MOC_LITERAL(1160, 18),  // "setupFirewallRules"
-        QT_MOC_LITERAL(1179, 6),  // "enable"
-        QT_MOC_LITERAL(1186, 18),  // "diagnoseConnection"
-        QT_MOC_LITERAL(1205, 16),  // "testServerConfig"
-        QT_MOC_LITERAL(1222, 20),  // "getExternalInterface"
-        QT_MOC_LITERAL(1243, 18),  // "setupIPTablesRules"
-        QT_MOC_LITERAL(1262, 20),  // "applyRoutingManually"
-        QT_MOC_LITERAL(1283, 13),  // "verifyRouting"
-        QT_MOC_LITERAL(1297, 18),  // "enableIPForwarding"
-        QT_MOC_LITERAL(1316, 17),  // "checkIPForwarding"
-        QT_MOC_LITERAL(1334, 16),  // "createClientsTab"
-        QT_MOC_LITERAL(1351, 18),  // "updateClientsTable"
-        QT_MOC_LITERAL(1370, 20),  // "updateClientsTableUI"
-        QT_MOC_LITERAL(1391, 24),  // "QMap<QString,ClientInfo>"
-        QT_MOC_LITERAL(1416, 10),  // "newClients"
-        QT_MOC_LITERAL(1427, 3),  // "now"
-        QT_MOC_LITERAL(1431, 24),  // "disconnectSelectedClient"
-        QT_MOC_LITERAL(1456, 20),  // "disconnectAllClients"
-        QT_MOC_LITERAL(1477, 17),  // "showClientDetails"
-        QT_MOC_LITERAL(1495, 9),  // "banClient"
-        QT_MOC_LITERAL(1505, 15),  // "applySpeedLimit"
-        QT_MOC_LITERAL(1521, 4),  // "kbps"
-        QT_MOC_LITERAL(1526, 16),  // "exportClientsLog"
-        QT_MOC_LITERAL(1543, 15),  // "clearClientsLog"
-        QT_MOC_LITERAL(1559, 24),  // "onClientTableContextMenu"
-        QT_MOC_LITERAL(1584, 3),  // "pos"
-        QT_MOC_LITERAL(1588, 17),  // "refreshClientsNow"
-        QT_MOC_LITERAL(1606, 25),  // "generateNamedClientConfig"
-        QT_MOC_LITERAL(1632, 19),  // "showClientAnalytics"
-        QT_MOC_LITERAL(1652, 24),  // "showClientSessionHistory"
-        QT_MOC_LITERAL(1677, 18),  // "loadClientRegistry"
-        QT_MOC_LITERAL(1696, 18),  // "saveClientRegistry"
-        QT_MOC_LITERAL(1715, 19),  // "updateRegistryTable"
-        QT_MOC_LITERAL(1735, 19),  // "applyRegistryFilter"
-        QT_MOC_LITERAL(1755, 23),  // "updateRealtimeDurations"
-        QT_MOC_LITERAL(1779, 24),  // "checkMultipleConnections"
-        QT_MOC_LITERAL(1804, 23),  // "deleteClientPermanently"
-        QT_MOC_LITERAL(1828, 17),  // "updateClientStats"
-        QT_MOC_LITERAL(1846, 17),  // "createTelegramTab"
-        QT_MOC_LITERAL(1864, 18),  // "onBotClientCreated"
-        QT_MOC_LITERAL(1883, 18),  // "onBotClientRevoked"
-        QT_MOC_LITERAL(1902, 19),  // "syncBotWithSettings"
-        QT_MOC_LITERAL(1922, 19),  // "createUrlHistoryTab"
-        QT_MOC_LITERAL(1942, 12),  // "addUrlAccess"
-        QT_MOC_LITERAL(1955, 9),  // "UrlAccess"
-        QT_MOC_LITERAL(1965, 6),  // "access"
-        QT_MOC_LITERAL(1972, 14),  // "updateUrlTable"
-        QT_MOC_LITERAL(1987, 21),  // "diagnoseBotConnection"
-        QT_MOC_LITERAL(2009, 16),  // "createMTProxyTab"
-        QT_MOC_LITERAL(2026, 16),  // "onMTProxyStarted"
-        QT_MOC_LITERAL(2043, 16),  // "onMTProxyStopped"
-        QT_MOC_LITERAL(2060, 12),  // "onMTProxyLog"
-        QT_MOC_LITERAL(2073, 3),  // "msg"
-        QT_MOC_LITERAL(2077, 5)   // "level"
-    },
+struct qt_meta_tag_ZN10MainWindowE_t {};
+} // unnamed namespace
+
+
+#ifdef QT_MOC_HAS_STRINGDATA
+static constexpr auto qt_meta_stringdata_ZN10MainWindowE = QtMocHelpers::stringData(
     "MainWindow",
     "serverStarted",
     "",
@@ -655,14 +363,15 @@ Q_CONSTINIT static const qt_meta_stringdata_MainWindow_t qt_meta_stringdata_Main
     "onMTProxyLog",
     "msg",
     "level"
-};
-#undef QT_MOC_LITERAL
-} // unnamed namespace
+);
+#else  // !QT_MOC_HAS_STRINGDATA
+#error "qtmochelpers.h not found or too old."
+#endif // !QT_MOC_HAS_STRINGDATA
 
-Q_CONSTINIT static const uint qt_meta_data_MainWindow[] = {
+Q_CONSTINIT static const uint qt_meta_data_ZN10MainWindowE[] = {
 
  // content:
-      10,       // revision
+      12,       // revision
        0,       // classname
        0,    0, // classinfo
       99,   14, // methods
@@ -883,11 +592,11 @@ Q_CONSTINIT static const uint qt_meta_data_MainWindow[] = {
 
 Q_CONSTINIT const QMetaObject MainWindow::staticMetaObject = { {
     QMetaObject::SuperData::link<QMainWindow::staticMetaObject>(),
-    qt_meta_stringdata_MainWindow.offsetsAndSizes,
-    qt_meta_data_MainWindow,
+    qt_meta_stringdata_ZN10MainWindowE.offsetsAndSizes,
+    qt_meta_data_ZN10MainWindowE,
     qt_static_metacall,
     nullptr,
-    qt_incomplete_metaTypeArray<qt_meta_stringdata_MainWindow_t,
+    qt_incomplete_metaTypeArray<qt_meta_tag_ZN10MainWindowE_t,
         // Q_OBJECT / Q_GADGET
         QtPrivate::TypeAndForceComplete<MainWindow, std::true_type>,
         // method 'serverStarted'
@@ -1126,9 +835,8 @@ Q_CONSTINIT const QMetaObject MainWindow::staticMetaObject = { {
 
 void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
 {
+    auto *_t = static_cast<MainWindow *>(_o);
     if (_c == QMetaObject::InvokeMetaMethod) {
-        auto *_t = static_cast<MainWindow *>(_o);
-        (void)_t;
         switch (_id) {
         case 0: _t->serverStarted(); break;
         case 1: _t->clientsUpdated(); break;
@@ -1234,39 +942,40 @@ void MainWindow::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         case 98: _t->onMTProxyLog((*reinterpret_cast< std::add_pointer_t<QString>>(_a[1])),(*reinterpret_cast< std::add_pointer_t<QString>>(_a[2]))); break;
         default: ;
         }
-    } else if (_c == QMetaObject::IndexOfMethod) {
+    }
+    if (_c == QMetaObject::IndexOfMethod) {
         int *result = reinterpret_cast<int *>(_a[0]);
         {
-            using _t = void (MainWindow::*)();
-            if (_t _q_method = &MainWindow::serverStarted; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (MainWindow::*)();
+            if (_q_method_type _q_method = &MainWindow::serverStarted; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 0;
                 return;
             }
         }
         {
-            using _t = void (MainWindow::*)();
-            if (_t _q_method = &MainWindow::clientsUpdated; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (MainWindow::*)();
+            if (_q_method_type _q_method = &MainWindow::clientsUpdated; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 1;
                 return;
             }
         }
         {
-            using _t = void (MainWindow::*)(bool );
-            if (_t _q_method = &MainWindow::torStateChanged; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (MainWindow::*)(bool );
+            if (_q_method_type _q_method = &MainWindow::torStateChanged; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 2;
                 return;
             }
         }
         {
-            using _t = void (MainWindow::*)(const QMap<QString,ClientRecord> & );
-            if (_t _q_method = &MainWindow::registryUpdated; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (MainWindow::*)(const QMap<QString,ClientRecord> & );
+            if (_q_method_type _q_method = &MainWindow::registryUpdated; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 3;
                 return;
             }
         }
         {
-            using _t = void (MainWindow::*)();
-            if (_t _q_method = &MainWindow::clientRegistryChanged; *reinterpret_cast<_t *>(_a[1]) == _q_method) {
+            using _q_method_type = void (MainWindow::*)();
+            if (_q_method_type _q_method = &MainWindow::clientRegistryChanged; *reinterpret_cast<_q_method_type *>(_a[1]) == _q_method) {
                 *result = 4;
                 return;
             }
@@ -1282,7 +991,7 @@ const QMetaObject *MainWindow::metaObject() const
 void *MainWindow::qt_metacast(const char *_clname)
 {
     if (!_clname) return nullptr;
-    if (!strcmp(_clname, qt_meta_stringdata_MainWindow.stringdata0))
+    if (!strcmp(_clname, qt_meta_stringdata_ZN10MainWindowE.stringdata0))
         return static_cast<void*>(this);
     return QMainWindow::qt_metacast(_clname);
 }
@@ -1296,7 +1005,8 @@ int MainWindow::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
         if (_id < 99)
             qt_static_metacall(this, _c, _id, _a);
         _id -= 99;
-    } else if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
+    }
+    if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
         if (_id < 99)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
         _id -= 99;
@@ -1336,4 +1046,3 @@ void MainWindow::clientRegistryChanged()
     QMetaObject::activate(this, &staticMetaObject, 4, nullptr);
 }
 QT_WARNING_POP
-QT_END_MOC_NAMESPACE
