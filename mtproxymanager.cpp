@@ -22,6 +22,124 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 
+QString MTProxyManager::getExternalIp()
+{
+    // Пробуем ifconfig.me
+    QProcess proc;
+    proc.start("curl", {"-s", "--max-time", "5", "ifconfig.me"});
+    if (proc.waitForFinished(5000) && proc.exitCode() == 0) {
+        QString ip = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        if (!ip.isEmpty() && !ip.startsWith("127.")) {
+            return ip;
+        }
+    }
+
+    // Пробуем icanhazip.com
+    proc.start("curl", {"-s", "--max-time", "5", "icanhazip.com"});
+    if (proc.waitForFinished(5000) && proc.exitCode() == 0) {
+        QString ip = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        if (!ip.isEmpty() && !ip.startsWith("127.")) {
+            return ip;
+        }
+    }
+
+    // Пробуем через ip route
+    proc.start("ip", {"route", "get", "1.1.1.1"});
+    if (proc.waitForFinished(3000) && proc.exitCode() == 0) {
+        QString output = QString::fromUtf8(proc.readAllStandardOutput());
+        QRegularExpression re("src (\\d+\\.\\d+\\.\\d+\\.\\d+)");
+        auto match = re.match(output);
+        if (match.hasMatch()) {
+            QString ip = match.captured(1);
+            if (!ip.startsWith("127.") && !ip.startsWith("10.") && !ip.startsWith("192.168.")) {
+                return ip;
+            }
+        }
+    }
+
+    return QString();
+}
+
+QString MTProxyManager::getInternalIp()
+{
+    QProcess proc;
+    proc.start("ip", {"-4", "addr", "show"});
+    if (!proc.waitForFinished(3000)) {
+        return QString();
+    }
+
+    QString output = QString::fromUtf8(proc.readAllStandardOutput());
+
+    // Ищем не loopback интерфейс (eth, enp, ens, wlan, wlp)
+    QRegularExpression re("(?:eth|enp|ens|wlan|wlp)(?:\\S+):.*?inet (\\d+\\.\\d+\\.\\d+\\.\\d+)/");
+    auto match = re.match(output);
+    if (match.hasMatch()) {
+        return match.captured(1);
+    }
+
+    // Fallback: любой IP кроме 127.0.0.1 и 10.8.0.1 (VPN)
+    QRegularExpression fallbackRe("inet (\\d+\\.\\d+\\.\\d+\\.\\d+)/");
+    QRegularExpressionMatchIterator it = fallbackRe.globalMatch(output);
+    while (it.hasNext()) {
+        QRegularExpressionMatch m = it.next();
+        QString ip = m.captured(1);
+        if (!ip.startsWith("127.") && !ip.startsWith("10.8.")) {
+            return ip;
+        }
+    }
+
+    return QString();
+}
+
+void MTProxyManager::setupFirewallRules(int port)
+{
+    // Разрешаем входящие соединения на порт (INPUT chain)
+    QProcess checkInput;
+    checkInput.start("iptables", {"-C", "INPUT", "-p", "tcp", "--dport", QString::number(port), "-j", "ACCEPT"});
+    checkInput.waitForFinished(2000);
+
+    if (checkInput.exitCode() != 0) {
+        QProcess addInput;
+        addInput.start("iptables", {"-A", "INPUT", "-p", "tcp", "--dport", QString::number(port), "-j", "ACCEPT"});
+        addInput.waitForFinished(2000);
+        if (addInput.exitCode() == 0) {
+            emit logMessage("✅ Правило INPUT добавлено для порта " + QString::number(port), "success");
+        } else {
+            QString err = QString::fromUtf8(addInput.readAllStandardError());
+            emit logMessage("⚠️ Не удалось добавить INPUT правило: " + err, "warning");
+        }
+    }
+
+    // UFW поддержка
+    QProcess ufwCheck;
+    ufwCheck.start("which", {"ufw"});
+    ufwCheck.waitForFinished(2000);
+    if (ufwCheck.exitCode() == 0) {
+        QProcess ufwAllow;
+        ufwAllow.start("ufw", {"allow", QString::number(port) + "/tcp"});
+        ufwAllow.waitForFinished(5000);
+        if (ufwAllow.exitCode() == 0) {
+            emit logMessage("✅ UFW правило добавлено для порта " + QString::number(port), "success");
+        }
+    }
+}
+
+void MTProxyManager::removeFirewallRules(int port)
+{
+    // Удаляем правило INPUT
+    QProcess delInput;
+    delInput.start("iptables", {"-D", "INPUT", "-p", "tcp", "--dport", QString::number(port), "-j", "ACCEPT"});
+    delInput.waitForFinished(2000);
+    if (delInput.exitCode() == 0) {
+        emit logMessage("✅ Правило INPUT удалено для порта " + QString::number(port), "info");
+    }
+
+    // Удаляем UFW правило
+    QProcess ufwDelete;
+    ufwDelete.start("ufw", {"delete", "allow", QString::number(port) + "/tcp"});
+    ufwDelete.waitForFinished(5000);
+}
+
 // ==================== MTProxyManager Implementation ====================
 
 MTProxyManager::MTProxyManager(QObject *parent)
@@ -123,13 +241,7 @@ bool MTProxyManager::startProxy(int port, const QString &secret)
         return false;
     }
 
-    if (mtprotoPath.isEmpty()) {
-        emit logMessage("Путь к MTProto-Proxy не задан", "error");
-        return false;
-    }
-
-    // Проверяем существование бинарника
-    if (!QFile::exists(mtprotoPath)) {
+    if (mtprotoPath.isEmpty() || !QFile::exists(mtprotoPath)) {
         emit logMessage("MTProto-Proxy бинарник не найден: " + mtprotoPath, "error");
         return false;
     }
@@ -139,10 +251,11 @@ bool MTProxyManager::startProxy(int port, const QString &secret)
         currentSecret = secret;
     } else if (currentSecret.isEmpty()) {
         currentSecret = generateSecureSecret();
+        currentSecret = "ee" + currentSecret;
     }
 
     if (!validateSecret(currentSecret)) {
-        emit logMessage("Неверный формат секрета (требуется 32 hex символа)", "error");
+        emit logMessage("Неверный формат секрета", "error");
         return false;
     }
 
@@ -150,188 +263,126 @@ bool MTProxyManager::startProxy(int port, const QString &secret)
     QString proxySecretPath = appData + "/proxy-secret";
     QString proxyConfPath   = appData + "/proxy-multi.conf";
 
-    // Скачиваем файлы конфигурации если их нет
-    if (!QFile::exists(proxySecretPath) || !QFile::exists(proxyConfPath)) {
-        emit logMessage("Загрузка proxy-secret и proxy-multi.conf...", "info");
-
-        QThread *dlThread = QThread::create([this, proxySecretPath, proxyConfPath, port, secret]() {
-            auto download = [this](const QString &url, const QString &dest, bool useTor) -> bool {
-                QProcess dl;
-                QStringList args;
-                args << "-s" << "--max-time" << "15" << "-o" << dest;
-                if (useTor) {
-                    args << "--socks5-hostname" << "127.0.0.1:9050";
-                }
-                args << url;
-                dl.start("curl", args);
-                if (!dl.waitForFinished(20000)) {
-                    dl.kill();
-                    return false;
-                }
-                if (dl.exitCode() != 0) {
-                    return false;
-                }
-                return QFile::exists(dest) && QFileInfo(dest).size() > 0;
-            };
-
-            auto tryDownload = [&](const QString &url, const QString &dest) -> bool {
-                if (download(url, dest, false)) return true;
-                emit logMessage("Прямое соединение не удалось, пробуем через Tor...", "warning");
-                return download(url, dest, true);
-            };
-
-            bool ok1 = tryDownload("https://core.telegram.org/getProxySecret", proxySecretPath);
-            bool ok2 = tryDownload("https://core.telegram.org/getProxyConfig", proxyConfPath);
-
-            if (!ok1 || !ok2) {
-                emit logMessage("Не удалось загрузить конфигурацию Telegram", "error");
-                return;
-            }
-
-            emit logMessage("✅ proxy-secret и proxy-multi.conf успешно загружены", "success");
-
-            QMetaObject::invokeMethod(this, [this, port, secret]() {
-                startProxy(port, secret);
-            }, Qt::QueuedConnection);
-        });
-
-        connect(dlThread, &QThread::finished, dlThread, &QThread::deleteLater);
-        dlThread->start();
-        return false;
-    }
-
-    // ========== СОЗДАНИЕ КОРРЕКТНОГО КОНФИГУРАЦИОННОГО ФАЙЛА ==========
-    // Правильный формат для mtproto-proxy:
-    //   proxy <адрес>:<порт>;
-    // ВАЖНО: секрет НЕ указывается в конфиге (используется через --aes-pwd)
-
-    QString serverAddress = "wwcat.duckdns.org";
-
-    // Формат с точкой с запятой (как требует новая версия)
-    QString configLine = "proxy " + serverAddress + ":" + QString::number(port) + ";\n";
-
-    QString configContent;
-    configContent += "# MTProxy Multi-Config File\n";
-    configContent += "# Generated by TorManager MTProxy\n";
-    configContent += "# Date: " + QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") + "\n";
-    configContent += "\n";
-    configContent += configLine;
-
-    // Добавляем резервный вариант с IP
-    configContent += "# proxy 0.0.0.0:" + QString::number(port) + ";\n";
-
+    // Создаем правильный конфигурационный файл для MTProxy
     QFile confFile(proxyConfPath);
-    if (!confFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
-        emit logMessage("Не удалось записать конфигурационный файл: " + proxyConfPath, "error");
-        return false;
-    }
-    confFile.write(configContent.toUtf8());
-    confFile.close();
-
-    emit logMessage("📝 Создан конфигурационный файл: " + proxyConfPath, "info");
-    emit logMessage("   Строка конфигурации: " + configLine.trimmed(), "info");
-
-    // ========== ФОРМИРОВАНИЕ АРГУМЕНТОВ ЗАПУСКА ==========
-    QStringList args;
-
-    // Базовые аргументы
-    args << "-u" << "nobody";
-    args << "-p" << "8888";
-    args << "-H" << QString::number(port);
-    args << "-M" << "1";
-
-    // ВАЖНО: НЕ передаём -S, секрет только в конфигурационном файле!
-
-    // AES пароль (обязателен)
-    if (QFile::exists(proxySecretPath)) {
-        args << "--aes-pwd" << proxySecretPath;
-    } else {
-        emit logMessage("❌ proxy-secret не найден: " + proxySecretPath, "error");
-        return false;
+    if (confFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&confFile);
+        out << "# MTProxy Multi-Config File\n";
+        out << "# Generated by TorManager MTProxy\n";
+        out << "# Date: " << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss") << "\n\n";
+        // Правильный формат для MTProxy - нужно указать proxy с IP и портом
+        // Используем 0.0.0.0 чтобы слушать на всех интерфейсах
+        QString listenIp = internalIp.isEmpty() ? "127.0.0.1" : internalIp;
+        out << "proxy " << listenIp << ":" << port << ";\n";
+        confFile.close();
+        emit logMessage("✅ proxy-multi.conf создан", "info");
     }
 
-    // Конфигурационный файл (позиционный аргумент)
-    args << proxyConfPath;
-
-    // NAT info
-    QString externalIp;
-    QProcess ipProc;
-    ipProc.start("curl", {"-s", "--max-time", "5", "ifconfig.me"});
-    if (ipProc.waitForFinished(5000) && ipProc.exitCode() == 0) {
-        externalIp = QString::fromUtf8(ipProc.readAllStandardOutput()).trimmed();
+    // Скачиваем proxy-secret если нет
+    if (!QFile::exists(proxySecretPath)) {
+        emit logMessage("Загрузка proxy-secret...", "info");
+        QProcess dl;
+        dl.start("curl", {"-s", "--max-time", "15", "-o", proxySecretPath,
+            "https://core.telegram.org/getProxySecret"});
+        if (!dl.waitForFinished(20000) || dl.exitCode() != 0) {
+            emit logMessage("Не удалось загрузить proxy-secret", "error");
+            return false;
+        }
+        emit logMessage("✅ proxy-secret загружен", "success");
     }
+
+    // Определяем IP адреса
+    QString externalIp = getExternalIp();
+    QString internalIp = getInternalIp();
 
     if (externalIp.isEmpty()) {
-        externalIp = serverAddress;
-        emit logMessage("⚠️ Не удалось определить внешний IP, используем домен: " + serverAddress, "warning");
+        externalIp = "0.0.0.0";
+        emit logMessage("⚠️ Не удалось определить внешний IP", "warning");
     }
-
-    QString internalIp;
-    QProcess ifProc;
-    ifProc.start("sh", {"-c", "ip route get 1.1.1.1 | grep -oP 'src \\K\\S+' | head -1"});
-    if (ifProc.waitForFinished(3000) && ifProc.exitCode() == 0) {
-        internalIp = QString::fromUtf8(ifProc.readAllStandardOutput()).trimmed();
-    }
+    currentExternalIp = externalIp;
 
     if (internalIp.isEmpty()) {
-        internalIp = "127.0.0.1";
-        emit logMessage("⚠️ Не удалось определить внутренний IP, используем 127.0.0.1", "warning");
+        internalIp = "0.0.0.0";
+        emit logMessage("⚠️ Не удалось определить внутренний IP", "warning");
     }
 
-    // NAT info формат: <внешний_ip>:<внутренний_ip>
-    QString natInfo = externalIp + ":" + internalIp;
-    args << "--nat-info" << natInfo;
+    // Формируем аргументы запуска
+    QStringList args;
+
+    // Порт статистики
+    args << "-p" << "8888";
+
+    // Порт для клиентов
+    args << "-H" << QString::number(port);
+
+    // Количество воркеров
+    args << "-M" << "1";
+
+    // Пользователь (запускаем от root)
+    args << "-u" << "root";
+
+    // Секрет (убираем префикс ee/dd)
+    QString rawSecret = currentSecret;
+    if (rawSecret.startsWith("ee", Qt::CaseInsensitive) ||
+        rawSecret.startsWith("dd", Qt::CaseInsensitive)) {
+        rawSecret = rawSecret.mid(2);
+        }
+        args << "-S" << rawSecret;
+
+    // AES пароль
+    args << "--aes-pwd" << proxySecretPath;
+
+    // NAT info (если нужно)
+    if (externalIp != internalIp && externalIp != "0.0.0.0" && internalIp != "0.0.0.0") {
+        args << "--nat-info" << (externalIp + ":" + internalIp);
+        emit logMessage("   NAT Info: " + externalIp + ":" + internalIp, "info");
+    }
+
+    // Конфигурационный файл
+    args << proxyConfPath;
 
     emit logMessage("🚀 Запуск MTProxy на порту " + QString::number(port), "info");
-    emit logMessage("   Домен: " + serverAddress, "info");
-    emit logMessage("   NAT Info: " + natInfo, "info");
-    emit logMessage("   Секрет: " + currentSecret.left(16) + "... (только в конфиге)", "info");
+    emit logMessage("   Внешний IP: " + externalIp, "info");
+    emit logMessage("   Команда: " + mtprotoPath + " " + args.join(" "), "info");
 
-    // Логируем команду (без секрета)
-    QString cmdLog = mtprotoPath + " " + args.join(" ");
-    emit logMessage("   Команда: " + cmdLog, "info");
+    // Останавливаем старый процесс
+    if (mtprotoProcess->state() != QProcess::NotRunning) {
+        mtprotoProcess->terminate();
+        mtprotoProcess->waitForFinished(2000);
+    }
 
-    // Запускаем процесс
+    // Запускаем
     mtprotoProcess->start(mtprotoPath, args);
 
     if (!mtprotoProcess->waitForStarted(5000)) {
-        QString errorMsg = mtprotoProcess->errorString();
-        emit logMessage("❌ Не удалось запустить MTProxy: " + errorMsg, "error");
-        emit proxyError(errorMsg);
+        emit logMessage("❌ Не удалось запустить MTProxy: " + mtprotoProcess->errorString(), "error");
+        return false;
+    }
 
-        QProcess portCheck;
-        portCheck.start("sh", {"-c", QString("ss -tlnp 2>/dev/null | grep ':%1 '").arg(port)});
-        portCheck.waitForFinished(2000);
-        if (!portCheck.readAllStandardOutput().isEmpty()) {
-            emit logMessage("   Порт " + QString::number(port) + " уже занят другим процессом", "warning");
+    // Даем время на инициализацию
+    QThread::msleep(1000);
+
+    // Проверяем, жив ли процесс
+    if (mtprotoProcess->state() == QProcess::NotRunning) {
+        QString error = QString::fromUtf8(mtprotoProcess->readAllStandardError());
+        emit logMessage("❌ MTProxy завершился с кодом " + QString::number(mtprotoProcess->exitCode()), "error");
+        if (!error.isEmpty()) {
+            emit logMessage("   " + error.trimmed(), "error");
         }
         return false;
     }
+
+    // Настраиваем фаервол
+    setupFirewallRules(port);
 
     proxyRunning = true;
     statsTimer->start(STATS_UPDATE_INTERVAL);
     cleanupTimer->start(CLEANUP_INTERVAL);
 
-    // Сброс статистики
-    {
-        QMutexLocker locker(&statsMutex);
-        currentStats = MTProxyStats();
-        peakConnections = 0;
-        currentStats.activeConnections = 0;
-        currentStats.totalConnections = 0;
-        currentStats.totalBytesRx = 0;
-        currentStats.totalBytesTx = 0;
-    }
-
     emit proxyStarted();
     emit logMessage("✅ MTProxy успешно запущен на порту " + QString::number(port), "success");
-
-    // Формируем ссылку для Telegram
-    QString proxyLink = QString("tg://proxy?server=%1&port=%2&secret=%3")
-    .arg(serverAddress)
-    .arg(port)
-    .arg(currentSecret);
-    emit logMessage("🔗 Ссылка для подключения: " + proxyLink, "info");
+    emit logMessage("🔗 tg:// ссылка: " + getProxyLink(), "info");
+    emit logMessage("🌐 Браузер/iOS ссылка: " + getProxyLinkForPlatform("ios"), "info");
 
     return true;
 }
@@ -347,6 +398,9 @@ bool MTProxyManager::stopProxy()
     statsTimer->stop();
     cleanupTimer->stop();
 
+    // Удаляем правила фаервола
+    removeFirewallRules(currentPort);
+
     // Закрываем все активные соединения в БД
     {
         QMutexLocker locker(&clientsMutex);
@@ -356,9 +410,11 @@ bool MTProxyManager::stopProxy()
         activeClients.clear();
     }
 
+    // Останавливаем процесс
     if (mtprotoProcess->state() == QProcess::Running) {
         mtprotoProcess->terminate();
         if (!mtprotoProcess->waitForFinished(5000)) {
+            emit logMessage("Процесс не завершился по SIGTERM, отправляю SIGKILL", "warning");
             mtprotoProcess->kill();
             mtprotoProcess->waitForFinished(2000);
         }
@@ -816,8 +872,7 @@ QString MTProxyManager::generateSecret()
 
 QString MTProxyManager::generateSecureSecret()
 {
-    // FIX: mtproto-proxy требует ровно 32 hex символа (16 байт)
-    // Было 32 байта = 64 hex → ошибка "'S' option requires exactly 32 hex digits"
+    // Генерирует 32 hex символа (16 байт) — передаётся в -S аргументе mtproto-proxy
     QByteArray secret(16, 0);
     for (int i = 0; i < 16; i++) {
         secret[i] = static_cast<char>(QRandomGenerator::global()->bounded(256));
@@ -825,42 +880,81 @@ QString MTProxyManager::generateSecureSecret()
     return secret.toHex();
 }
 
+QString MTProxyManager::generateFakeTLSSecret(const QString &domain)
+{
+    // fake-TLS секрет: "ee" + 32 hex (16 случайных байт)
+    // Опционально: + hex-кодировка домена (для SNI маскировки)
+    // Формат который принимает mtproto-proxy через -S: без префикса ee (он только в URL)
+    // В URL ссылке: "ee" + те же 32 hex
+    QByteArray secret(16, 0);
+    for (int i = 0; i < 16; i++) {
+        secret[i] = static_cast<char>(QRandomGenerator::global()->bounded(256));
+    }
+    // Возвращаем уже с префиксом ee — для хранения в currentSecret
+    // При передаче в -S аргумент префикс будет отрезан в startProxy()
+    QString result = "ee" + secret.toHex();
+    if (!domain.isEmpty()) {
+        // Добавляем домен в hex для fake-TLS SNI (расширенный формат)
+        result += domain.toUtf8().toHex();
+    }
+    return result;
+}
+
 bool MTProxyManager::validateSecret(const QString &secret)
 {
-    // FIX: mtproto-proxy принимает ровно 32 hex символа (16 байт)
-    // Также допускается dd-префикс (random padding): "dd" + 32 hex = 34 символа
     if (secret.isEmpty()) return false;
 
     QString s = secret;
-    if (s.startsWith("dd") || s.startsWith("DD")) {
-        s = s.mid(2); // убираем префикс для проверки длины
+    // Убираем известные префиксы
+    if (s.startsWith("ee", Qt::CaseInsensitive) ||
+        s.startsWith("dd", Qt::CaseInsensitive)) {
+        s = s.mid(2);
     }
 
-    if (s.length() != 32) return false;
+    // Базовая часть должна быть ровно 32 hex символа
+    // (расширенный fake-TLS с доменом может быть длиннее — допускаем >= 32)
+    if (s.length() < 32) return false;
 
     static QRegularExpression hexRe("^[0-9a-fA-F]+$");
-    return hexRe.match(secret).hasMatch();
+    return hexRe.match(s).hasMatch();
 }
 
 QString MTProxyManager::getProxyLink() const
 {
-    // Формат: tg://proxy?server=DOMAIN&port=PORT&secret=SECRET
-    return QString("tg://proxy?server=wwcat.duckdns.org&port=%1&secret=%2")
-    .arg(currentPort).arg(currentSecret);
+    // Используем реальный внешний IP, определённый при запуске.
+    // Если serverAddress задан вручную — используем его (для доменного имени).
+    QString server = !serverAddress.isEmpty() ? serverAddress
+                   : (!currentExternalIp.isEmpty() ? currentExternalIp : "YOUR_SERVER_IP");
+
+    // В ссылке секрет должен быть с префиксом "ee" для поддержки fake-TLS
+    // (без него iOS Telegram 7.x+ отказывается подключаться)
+    QString linkSecret = currentSecret;
+    if (!linkSecret.startsWith("ee", Qt::CaseInsensitive) &&
+        !linkSecret.startsWith("dd", Qt::CaseInsensitive)) {
+        linkSecret = "ee" + linkSecret;
+    }
+
+    // Формат tg://proxy работает на всех платформах включая iOS
+    return QString("tg://proxy?server=%1&port=%2&secret=%3")
+           .arg(server).arg(currentPort).arg(linkSecret);
 }
 
 QString MTProxyManager::getProxyLinkForPlatform(const QString &platform) const
 {
-    if (platform == "ios") {
-        // iOS формат
-        return QString("https://t.me/socks?server=wwcat.duckdns.org&port=%1&secret=%2")
-        .arg(currentPort).arg(currentSecret);
-    } else if (platform == "android") {
-        // Android формат
-        return getProxyLink();
-    } else if (platform == "desktop") {
-        // Desktop формат
-        return QString("socks5://wwcat.duckdns.org:%1").arg(currentPort);
+    QString server = !serverAddress.isEmpty() ? serverAddress
+                   : (!currentExternalIp.isEmpty() ? currentExternalIp : "YOUR_SERVER_IP");
+
+    QString linkSecret = currentSecret;
+    if (!linkSecret.startsWith("ee", Qt::CaseInsensitive) &&
+        !linkSecret.startsWith("dd", Qt::CaseInsensitive)) {
+        linkSecret = "ee" + linkSecret;
+    }
+
+    if (platform == "ios" || platform == "android" || platform == "desktop") {
+        // https://t.me/proxy — универсальный формат, открывается в браузере
+        // и перенаправляет в Telegram на всех платформах
+        return QString("https://t.me/proxy?server=%1&port=%2&secret=%3")
+               .arg(server).arg(currentPort).arg(linkSecret);
     }
     return getProxyLink();
 }
@@ -934,35 +1028,45 @@ void MTProxyWidget::setupUI()
     edtPort->setValidator(new QIntValidator(1, 65535, this));
     controlLayout->addWidget(edtPort, 0, 1);
 
-    controlLayout->addWidget(new QLabel("Секрет:"), 0, 2);
+    controlLayout->addWidget(new QLabel("Домен/IP:"), 1, 0);
+    edtDomain = new QLineEdit();
+    edtDomain->setPlaceholderText("wwcat.duckdns.org  (или оставьте пустым — будет использован внешний IP)");
+    edtDomain->setToolTip("Домен или IP для ссылки подключения. Используйте DDNS-домен если IP меняется.");
+    controlLayout->addWidget(edtDomain, 1, 1, 1, 5);
+
+    controlLayout->addWidget(new QLabel("Секрет:"), 2, 0);
     edtSecret = new QLineEdit();
-    edtSecret->setPlaceholderText("Автоматически генерируется");
+    edtSecret->setPlaceholderText("Автоматически генерируется (ee-префикс = fake-TLS)");
     edtSecret->setReadOnly(true);
-    controlLayout->addWidget(edtSecret, 0, 3, 1, 2);
+    controlLayout->addWidget(edtSecret, 2, 1, 1, 4);
 
     btnGenerateSecret = new QPushButton("🎲 Генерация");
-    controlLayout->addWidget(btnGenerateSecret, 0, 5);
+    controlLayout->addWidget(btnGenerateSecret, 2, 5);
 
     // FIX #2: кнопка установки бинарника mtproto-proxy
     btnInstallMTProxy = new QPushButton("⚙️ Установить MTProxy");
     btnInstallMTProxy->setToolTip("Скачать и собрать mtproto-proxy из исходников GitHub");
-    controlLayout->addWidget(btnInstallMTProxy, 1, 5, 1, 2);
+    controlLayout->addWidget(btnInstallMTProxy, 3, 5, 1, 2);
 
     btnStartStop = new QPushButton("▶ Запустить");
     btnStartStop->setStyleSheet("QPushButton { background: #27ae60; color: white; font-weight: bold; }");
-    controlLayout->addWidget(btnStartStop, 0, 6);
+    controlLayout->addWidget(btnStartStop, 2, 6);
 
-    btnCopyLink = new QPushButton("📋 Копировать ссылку");
-    controlLayout->addWidget(btnCopyLink, 1, 0, 1, 2);
+    btnCopyLink = new QPushButton("📋 Копировать ссылку (tg://)");
+    controlLayout->addWidget(btnCopyLink, 3, 0, 1, 2);
+
+    QPushButton *btnCopyWebLink = new QPushButton("📱 Копировать iOS/Web ссылку");
+    btnCopyWebLink->setToolTip("https://t.me/proxy — открывается в браузере и перенаправляет в Telegram");
+    controlLayout->addWidget(btnCopyWebLink, 4, 0, 1, 2);
 
     lblStatus = new QLabel("Статус: ○ Остановлен");
     lblStatus->setStyleSheet("color: #7f8c8d; font-weight: bold;");
-    controlLayout->addWidget(lblStatus, 1, 2, 1, 4);
+    controlLayout->addWidget(lblStatus, 3, 2, 1, 4);
 
     lblProxyLink = new QLabel();
     lblProxyLink->setStyleSheet("color: #2980b9; font-size: 10px; font-family: monospace;");
     lblProxyLink->setWordWrap(true);
-    controlLayout->addWidget(lblProxyLink, 2, 0, 1, 7);
+    controlLayout->addWidget(lblProxyLink, 5, 0, 1, 7);
 
     mainLayout->addWidget(controlGroup);
 
@@ -1050,6 +1154,18 @@ void MTProxyWidget::setupUI()
     connect(btnGenerateSecret, &QPushButton::clicked, this, &MTProxyWidget::onGenerateSecret);
     connect(btnInstallMTProxy, &QPushButton::clicked, this, &MTProxyWidget::onInstallMTProxy);
     connect(btnCopyLink, &QPushButton::clicked, this, &MTProxyWidget::onCopyLink);
+    connect(btnCopyWebLink, &QPushButton::clicked, this, [this]() {
+        if (!proxyManager->isRunning()) {
+            QMessageBox::warning(this, "Прокси не запущен", "Сначала запустите прокси.");
+            return;
+        }
+        QString link = proxyManager->getProxyLinkForPlatform("ios");
+        QApplication::clipboard()->setText(link);
+        QMessageBox::information(this, "iOS/Web ссылка скопирована",
+            "Ссылка для iOS/Android/браузера скопирована:\n\n" + link + "\n\n"
+            "Отправьте её пользователю — при открытии в Safari/Chrome "
+            "автоматически откроется Telegram с настройками прокси.");
+    });
     connect(btnRefresh, &QPushButton::clicked, this, &MTProxyWidget::refreshData);
     connect(btnExport, &QPushButton::clicked, this, &MTProxyWidget::onExportCSV);
     connect(btnClearHistory, &QPushButton::clicked, this, [this]() {
@@ -1215,7 +1331,9 @@ void MTProxyWidget::updateProxyStatus()
         lblStatus->setStyleSheet("color: #27ae60; font-weight: bold;");
         btnStartStop->setText("⏹ Остановить");
         btnStartStop->setStyleSheet("QPushButton { background: #e74c3c; color: white; font-weight: bold; }");
-        lblProxyLink->setText("🔗 " + proxyManager->getProxyLink());
+        QString tgLink = proxyManager->getProxyLink();
+        QString webLink = proxyManager->getProxyLinkForPlatform("ios");
+        lblProxyLink->setText("🔗 " + tgLink + "\n🌐 " + webLink);
     } else {
         lblStatus->setText("Статус: ○ Остановлен");
         lblStatus->setStyleSheet("color: #7f8c8d; font-weight: bold;");
@@ -1234,9 +1352,13 @@ void MTProxyWidget::onStartStopClicked()
         QString secret = edtSecret->text().trimmed();
 
         if (secret.isEmpty()) {
-            secret = MTProxyManager::generateSecret();
+            secret = MTProxyManager::generateFakeTLSSecret();
             edtSecret->setText(secret);
         }
+
+        // Передаём домен/хост — используется в ссылках вместо IP
+        QString domain = edtDomain ? edtDomain->text().trimmed() : QString();
+        proxyManager->setServerAddress(domain);
 
         if (proxyManager->startProxy(port, secret)) {
             saveSettings();
@@ -1246,11 +1368,11 @@ void MTProxyWidget::onStartStopClicked()
 
 void MTProxyWidget::onGenerateSecret()
 {
-    QString secret = MTProxyManager::generateSecureSecret();
+    // Генерируем fake-TLS секрет с префиксом "ee" — работает на iOS, Android, Desktop
+    QString secret = MTProxyManager::generateFakeTLSSecret();
     edtSecret->setText(secret);
 
     if (proxyManager->isRunning()) {
-        // Перезапуск с новым секретом
         proxyManager->setSecret(secret);
     }
 }
@@ -1259,12 +1381,18 @@ void MTProxyWidget::onCopyLink()
 {
     if (!proxyManager->isRunning()) return;
 
-    QString link = proxyManager->getProxyLink();
-    QApplication::clipboard()->setText(link);
+    QString tgLink      = proxyManager->getProxyLink();
+    QString browserLink = proxyManager->getProxyLinkForPlatform("ios");
+
+    // Копируем в буфер ссылку tg:// (открывается напрямую в Telegram)
+    QApplication::clipboard()->setText(tgLink);
 
     QMessageBox::information(this, "Ссылка скопирована",
-                             "Ссылка для подключения к прокси скопирована в буфер обмена.\n\n"
-                             "В Telegram: Настройки → Данные и память → Прокси → Вставить ссылку");
+        "Ссылка для подключения скопирована в буфер обмена.\n\n"
+        "🔗 Ссылка для Telegram (все платформы):\n" + tgLink + "\n\n"
+        "🌐 Ссылка через браузер (iOS / Android):\n" + browserLink + "\n\n"
+        "iOS: откройте ссылку в Safari — Telegram откроется автоматически.\n"
+        "Desktop: Настройки → Данные и память → Прокси → Вставить ссылку.");
 }
 
 void MTProxyWidget::onExportCSV()
@@ -1378,24 +1506,31 @@ void MTProxyWidget::loadSettings()
     QSettings settings("TorManager", "MTProxy");
     edtPort->setText(settings.value("port", "443").toString());
 
+    // Загружаем домен (по умолчанию пустой — будет использован внешний IP)
+    if (edtDomain) {
+        edtDomain->setText(settings.value("domain", "").toString());
+    }
+
     QString secret = settings.value("secret").toString();
-    // FIX: сбрасываем секрет неверной длины (старый 64-символьный)
-    bool isDD = secret.startsWith("dd") || secret.startsWith("DD");
-    int expectedLen = isDD ? 34 : 32;
-    if (!secret.isEmpty() && secret.length() != expectedLen) {
-        secret = MTProxyManager::generateSecureSecret();
+    // Проверяем валидность секрета — если неверный, генерируем новый fake-TLS
+    if (!secret.isEmpty() && !MTProxyManager::validateSecret(secret)) {
+        secret = MTProxyManager::generateFakeTLSSecret();
         settings.setValue("secret", secret);
         settings.sync();
     }
+    // Если секрет пустой — не генерируем здесь, пользователь сам нажмёт "Генерация"
     edtSecret->setText(secret);
 }
 
 void MTProxyWidget::saveSettings()
 {
     if (!edtPort || !edtSecret) return;
-    
+
     QSettings settings("TorManager", "MTProxy");
     settings.setValue("port", edtPort->text());
+    if (edtDomain) {
+        settings.setValue("domain", edtDomain->text().trimmed());
+    }
     if (!edtSecret->text().isEmpty()) {
         settings.setValue("secret", edtSecret->text());
     }

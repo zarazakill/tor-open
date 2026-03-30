@@ -15,12 +15,14 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     tgbot_manager.cpp \
-    dns_monitor.cpp
+    dns_monitor.cpp \
+    client_stats.cpp
 
 HEADERS += \
     mainwindow.h \
     tgbot_manager.h \
-    dns_monitor.h
+    dns_monitor.h \
+    client_stats.h
 
 INCLUDEPATH += .
 
@@ -50,7 +52,6 @@ CONFIG(debug, debug|release) {
 # ---------- LINUX ----------
 unix:!macx {
 
-    DEFINES += Q_OS_LINUX
     DEFINES += _GNU_SOURCE
 
     LIBS += -ldl -lz

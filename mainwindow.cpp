@@ -1276,7 +1276,8 @@ void MainWindow::createClientsTab()
     // Инициализация DNS монитора
     dnsMonitor = new DnsMonitor(this);
     connect(dnsMonitor, &DnsMonitor::urlAccessed,
-            this, &MainWindow::addUrlAccess);
+            this, &MainWindow::addUrlAccess,
+            Qt::QueuedConnection);  // QueuedConnection — гарантирует выполнение в главном потоке
     connect(dnsMonitor, &DnsMonitor::logMessage,
             this, &MainWindow::addLogMessage);
 
@@ -1410,6 +1411,7 @@ void MainWindow::createUrlHistoryTab()
 
 void MainWindow::addUrlAccess(const UrlAccess &access)
 {
+    // Этот метод вызывается через Qt::QueuedConnection — всегда в главном потоке
     urlHistory.prepend(access);  // новые сверху
 
     // Ограничиваем размер истории (макс 10000 записей)
@@ -1417,21 +1419,24 @@ void MainWindow::addUrlAccess(const UrlAccess &access)
         urlHistory.removeLast();
     }
 
-    updateUrlTable();
-
     // Обновляем фильтр клиентов
     if (urlClientFilter && urlClientFilter->findText(access.clientName) == -1) {
         urlClientFilter->addItem(access.clientName);
     }
 
-    // Логируем в журнал клиентов
-    QString timestamp = QDateTime::currentDateTime().toString("dd.MM.yyyy HH:mm:ss");
-    txtClientsLog->append(QString(
-        "<span style='color:#3498db;'>[%1] 🌐 <b>%2</b> → %3 [%4]</span>")
-    .arg(timestamp)
-    .arg(access.clientName)
-    .arg(access.url)
-    .arg(access.method));
+    // Обновляем таблицу только если вкладка видима (оптимизация)
+    updateUrlTable();
+
+    // Логируем в журнал клиентов (только если виджет существует)
+    if (txtClientsLog) {
+        QString timestamp = QDateTime::currentDateTime().toString("dd.MM.yyyy HH:mm:ss");
+        txtClientsLog->append(QString(
+            "<span style='color:#3498db;'>[%1] 🌐 <b>%2</b> → %3 [%4]</span>")
+        .arg(timestamp)
+        .arg(access.clientName.toHtmlEscaped())
+        .arg(access.url.toHtmlEscaped())
+        .arg(access.method));
+    }
 }
 
 // НОВЫЙ МЕТОД: Обновление таблицы URL
@@ -3103,21 +3108,8 @@ void MainWindow::updateClientsTable()
         newClients[key] = client;
     }
 
-    // Обновляем кэш и статистику ДО обновления map
-    clientsCache = newClients;
-    activeIPsPerClient = newActiveIPsPerClient;
-    lastClientRefreshMs = nowMs;
-
-    // Обновляем client map для DNS монитора
-    if (dnsMonitor) {
-        QMap<QString, QString> ipMap;
-        for (auto it = clientsCache.begin(); it != clientsCache.end(); ++it) {
-            ipMap[it.value().virtualAddress] = it.value().commonName;
-        }
-        dnsMonitor->setClientMap(ipMap);
-    }
-
     // Обновление статистики скорости через ClientStats
+    // ВАЖНО: делаем это ДО сохранения в clientsCache, чтобы скорости попали в кэш
     QSet<QString> activeClients;
     for (auto it = newClients.begin(); it != newClients.end(); ++it) {
         activeClients.insert(it.value().commonName);
@@ -3127,18 +3119,33 @@ void MainWindow::updateClientsTable()
         ClientInfo &client = it.value();
         QString clientId = client.commonName;
 
-        if (lastClientRefreshMs > 0 && clientStats) {
+        if (clientStats) {
             qint64 interval = nowMs - lastClientRefreshMs;
-            clientStats->updateSpeed(clientId, client.bytesReceived,
-                                     client.bytesSent, interval);
-
-            client.speedRxBps = clientStats->getAvgRxSpeed(clientId);
-            client.speedTxBps = clientStats->getAvgTxSpeed(clientId);
+            if (interval > 0) {
+                clientStats->updateSpeed(clientId, client.bytesReceived,
+                                         client.bytesSent, interval);
+                client.speedRxBps = clientStats->getAvgRxSpeed(clientId);
+                client.speedTxBps = clientStats->getAvgTxSpeed(clientId);
+            }
         }
     }
 
     if (clientStats) {
         clientStats->cleanup(activeClients);
+    }
+
+    // Теперь сохраняем кэш уже с правильными скоростями
+    activeIPsPerClient = newActiveIPsPerClient;
+    lastClientRefreshMs = nowMs;
+    clientsCache = newClients;
+
+    // Обновляем client map для DNS монитора
+    if (dnsMonitor) {
+        QMap<QString, QString> ipMap;
+        for (auto it = clientsCache.begin(); it != clientsCache.end(); ++it) {
+            ipMap[it.value().virtualAddress] = it.value().commonName;
+        }
+        dnsMonitor->setClientMap(ipMap);
     }
 
     // Детектор мульти-подключений
@@ -3256,15 +3263,6 @@ void MainWindow::updateClientsTable()
                 }
             }
         }
-    }
-
-    // Обновляем таблицу активных клиентов (ТОЛЬКО В ГЛАВНОМ ПОТОКЕ)
-    if (QThread::currentThread() == this->thread()) {
-        updateClientsTableUI(newClients, now);
-    } else {
-        QMetaObject::invokeMethod(this, [this, newClients, now]() {
-            updateClientsTableUI(newClients, now);
-        }, Qt::QueuedConnection);
     }
 
     // Сохраняем реестр
@@ -3991,8 +3989,7 @@ void MainWindow::updateRegistryTable()
         "Истекает", "⚡ Лимит", "Сессий", "Последнее подкл."
     });
 
-    // Блокируем сигналы чтобы не тригерить обработчики во время обновления
-    registryTable->blockSignals(true);
+    // Блокируем сортировку во время заполнения (но НЕ сигналы — иначе кнопки перестают реагировать)
     registryTable->setSortingEnabled(false);
     registryTable->setRowCount(clientRegistry.size());
 
@@ -4154,11 +4151,9 @@ void MainWindow::updateRegistryTable()
 
     registryTable->setSortingEnabled(true);
 
-    // --- Восстанавливаем выделение    // --- Восстанавливаем выделение и скролл ---
-    // ВАЖНО: blockSignals снимаем ДО selectRow, чтобы кнопки получили сигнал выбора.
-    // Строку ищем по имени клиента (Qt::UserRole), а не по индексу row —
-    // после setSortingEnabled(true) таблица пересортирована и restoreRow уже недействителен.
-    registryTable->blockSignals(false);
+    // --- Восстанавливаем выделение и скролл ---
+    // Строку ищем по имени клиента (Qt::UserRole), а не по индексу —
+    // после setSortingEnabled(true) таблица пересортирована.
 
     if (!selectedCN.isEmpty()) {
         for (int r = 0; r < registryTable->rowCount(); ++r) {

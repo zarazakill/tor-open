@@ -17,7 +17,6 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
-#include <QThread>
 #include <QMutex>
 #include <QGeoPositionInfoSource>
 #include <QGeoCoordinate>
@@ -53,8 +52,8 @@ struct MTProxyClient {
     QString osVersion;          // Версия ОС
     bool isActive;              // Активно ли соединение
     int proxyPort;              // Порт прокси (если несколько)
-    qint64 durationSeconds = 0; // FIX #6: длительность сессии в секундах
-    QDateTime disconnectedAt;   // FIX #6: время отключения
+    qint64 durationSeconds = 0; // Длительность сессии в секундах
+    QDateTime disconnectedAt;   // Время отключения
 };
 
 /**
@@ -71,14 +70,14 @@ struct MTProxyStats {
     int uniqueUsers;            // Уникальных пользователей
 
     // Конструктор с инициализацией нулями
-    MTProxyStats() 
-        : totalConnections(0)
-        , activeConnections(0)
-        , totalBytesRx(0)
-        , totalBytesTx(0)
-        , peakConnections(0)
-        , avgSpeed(0.0)
-        , uniqueUsers(0)
+    MTProxyStats()
+    : totalConnections(0)
+    , activeConnections(0)
+    , totalBytesRx(0)
+    , totalBytesTx(0)
+    , peakConnections(0)
+    , avgSpeed(0.0)
+    , uniqueUsers(0)
     {}
 };
 
@@ -107,6 +106,10 @@ public:
     QString getSecret() const { return currentSecret; }
     int getPort() const { return currentPort; }
 
+    // Настройка адреса сервера для ссылки
+    void setServerAddress(const QString &addr) { serverAddress = addr; }
+    QString getServerAddress() const { return serverAddress; }
+
     // Статистика
     MTProxyStats getStats() const;
     QList<MTProxyClient> getActiveClients() const;
@@ -115,6 +118,8 @@ public:
     // Генерация секрета
     static QString generateSecret();
     static QString generateSecureSecret();
+    static QString generateFakeTLSSecret(const QString &domain = QString());
+    static bool validateSecret(const QString &secret);
 
     // Получение ссылки для Telegram
     QString getProxyLink() const;
@@ -132,7 +137,6 @@ signals:
 
 public slots:
     void updateStats();
-    // refreshGeoLocation удалён - больше не используется
 
 private slots:
     void onProxyProcessOutput();
@@ -158,8 +162,13 @@ private:
     QString getCountryFromCache(const QString &ip);
 
     // Вспомогательные
-    bool validateSecret(const QString &secret);
     QString formatBytes(qint64 bytes) const;
+
+    // Новые методы
+    QString getExternalIp();
+    QString getInternalIp();
+    void setupFirewallRules(int port);
+    void removeFirewallRules(int port);
 
 public:
     QString formatDuration(qint64 seconds) const;
@@ -177,8 +186,10 @@ private:
     bool proxyRunning = false;
     int currentPort = 443;
     QString currentSecret;
+    QString currentExternalIp;  // Внешний IP, определённый при запуске
     QString mtprotoPath = "/usr/bin/mtproto-proxy";
     QString configPath;
+    QString serverAddress;  // Адрес сервера для отображения в ссылке
 
     // Данные клиентов
     QMap<QString, MTProxyClient> activeClients;
@@ -225,7 +236,7 @@ private slots:
     void onGenerateSecret();
     void onCopyLink();
     void onExportCSV();
-    void onInstallMTProxy(); // FIX #2
+    void onInstallMTProxy();
     void onClientTableContextMenu(const QPoint &pos);
     void showClientDetails();
     void banClientIP();
@@ -242,9 +253,10 @@ private:
     QGroupBox *controlGroup = nullptr;
     QLineEdit *edtPort = nullptr;
     QLineEdit *edtSecret = nullptr;
+    QLineEdit *edtDomain = nullptr;       // Домен/хост для ссылок (ddns или статический)
     QPushButton *btnStartStop = nullptr;
     QPushButton *btnGenerateSecret = nullptr;
-    QPushButton *btnInstallMTProxy = nullptr; // FIX #2
+    QPushButton *btnInstallMTProxy = nullptr;
     QPushButton *btnCopyLink = nullptr;
     QLabel *lblStatus = nullptr;
     QLabel *lblProxyLink = nullptr;
